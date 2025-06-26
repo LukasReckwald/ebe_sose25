@@ -1,5 +1,6 @@
 import { Text, View } from "react-native";
-
+import React from 'react';
+import SpotifyLogin from '../components/SpotifyLogin';
 export default function Index() {
   return (
       <View
@@ -9,7 +10,7 @@ export default function Index() {
               alignItems: "center",
           }}
       >
-        <Text>Edit app/index.tsx to edit this screen.</Text>
+      <SpotifyLogin/>
 
       </View>
   );
