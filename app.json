@@ -9,14 +9,24 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location"
+        ],
+        "NSLocationWhenInUseUsageDescription": "Diese App benötigt deinen Standort, um Funktionen wie Geofencing zu ermöglichen.",
+        "NSLocationAlwaysUsageDescription": "Diese App benötigt deinen Standort im Hintergrund, um Geofences zu erkennen.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.rckwld.ebeproject"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.rckwld.ebeproject"
     },
     "web": {
       "bundler": "metro",
@@ -33,10 +43,23 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "15210a9a-cbdd-4bd3-9fd1-b1db9d2c39b3"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/15210a9a-cbdd-4bd3-9fd1-b1db9d2c39b3"
     }
   }
 }
