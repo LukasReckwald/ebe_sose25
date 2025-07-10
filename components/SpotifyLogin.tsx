@@ -44,11 +44,11 @@ export default function SpotifyApp() {
         discovery
     );
 
-    const keepPlayerActive = async () => {
+/*    const keepPlayerActive = async () => {
         try {
             console.log("ich bin wach")
             // Wenn keine Musik spielt, pausieren wir den Player (um die Verbindung aktiv zu halten)
-            if (isPlaying) {
+            if (!isPlaying) {
                 await fetch('https://api.spotify.com/v1/me/player/play', {
                     method: 'PUT',
                     headers: {
@@ -70,7 +70,7 @@ export default function SpotifyApp() {
 
             return () => clearInterval(interval);
         }
-    }, [accessToken]);
+    }, [accessToken]);*/
 
     useEffect(() => {
         const fetchToken = async () => {
@@ -214,7 +214,7 @@ export default function SpotifyApp() {
         if (devices.length > 0) {
             await startPlayback(devices[0].id, playlistUri);
         } else {
-            await startPlayback(null, playlistUri);
+            await startPlayback('fca2e671c0a971c26f9acd20c191836cd2f32ba4', playlistUri);
             Alert.alert('Kein Gerät sichtbar', 'Bitte öffne Spotify auf deinem Gerät.', [
                 {text: 'Spotify öffnen', onPress: () => Linking.openURL('spotify://')},
                 {text: 'OK'},
@@ -243,6 +243,7 @@ export default function SpotifyApp() {
         if (devices.length > 0) {
             await startTrackPlayback(devices[0].id, trackUri);
         } else {
+            await startPlayback('fca2e671c0a971c26f9acd20c191836cd2f32ba4', trackUri);
             Alert.alert('Kein Gerät', 'Spotify muss geöffnet sein.', [
                 {text: 'OK'},
                 {text: 'Öffne Spotify', onPress: () => Linking.openURL('spotify:')},
