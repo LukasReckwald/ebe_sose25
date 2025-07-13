@@ -19,7 +19,7 @@ export default function TabLayout() {
                 tabBarButton: HapticTab,
                 tabBarBackground: TabBarBackground,
                 tabBarStyle: {
-                    backgroundColor: 'transparent',
+                    backgroundColor: Platform.OS === 'android' ? '#1a1a1a' : 'transparent', // Use a solid color on Android
                     position: 'absolute',
                     borderTopWidth: 0,
                     elevation: 0,
