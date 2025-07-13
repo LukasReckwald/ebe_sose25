@@ -13,6 +13,7 @@ import * as TaskManager from "expo-task-manager";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
+import {SafeAreaView} from "react-native-safe-area-context";
 
 const GEOFENCE_TASK = "GEOFENCE_TASK";
 
@@ -173,7 +174,7 @@ export default function Mapview() {
     }
 
     return (
-        <View style={styles.container}>
+        <SafeAreaView style={styles.container}>
             <MapView
                 ref={mapRef}
                 style={styles.map}
@@ -206,7 +207,7 @@ export default function Mapview() {
                     <Marker
                         coordinate={fakeLocation}
                         title="Fake Position"
-                        pinColor="red"
+                        pinColor="lightblue"
                         identifier="fake-location"
                     />
                 )}
@@ -312,7 +313,7 @@ export default function Mapview() {
             >
                 <Ionicons name={devMode ? "code" : "code-outline"} size={24} color="white" />
             </TouchableOpacity>
-        </View>
+        </SafeAreaView>
     );
 }
 
