@@ -1,5 +1,6 @@
-﻿import {View, Text, Platform, StyleSheet, SafeAreaView} from "react-native";
+﻿import {View, Text, Platform, StyleSheet} from "react-native";
 import React, { useEffect, useState, useRef } from "react";
+import {SafeAreaView} from 'react-native-safe-area-context';
 
 export default function Playlist() {
     return (
