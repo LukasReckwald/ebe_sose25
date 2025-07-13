@@ -2,7 +2,6 @@
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     TextInput,
     TouchableOpacity,
     Keyboard,
@@ -10,6 +9,7 @@
     KeyboardAvoidingView,
     Platform,
 } from "react-native";
+import {SafeAreaView} from "react-native-safe-area-context";
 import React, { useState } from "react";
 import { auth } from "@/firebaseConfig";
 import {
@@ -34,7 +34,7 @@ export default function Login() {
         }, [])
     );
 
-    const handleAuthError = (error) => {
+    const handleAuthError = (error : any) => {
         const code = error.code;
 
         switch (code) {
@@ -99,7 +99,7 @@ export default function Login() {
                     style={styles.centerBox}
                 >
                     <View style={styles.logoContainer}>
-                        <Text style={styles.logoText}>Naviote</Text>
+                        <Text style={styles.logoText}>Notavi</Text>
                         <Text style={styles.slogan}>
                             Erlebe Orte mit dem passenden Soundtrack
                         </Text>
