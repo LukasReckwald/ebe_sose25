@@ -16,6 +16,7 @@ import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
 } from "firebase/auth";
+import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { router, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -24,6 +25,8 @@ export default function Login() {
     const [password, setPassword] = useState("");
     const [isRegistering, setIsRegistering] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
+
+    const firestore = getFirestore();
 
     useFocusEffect(
         React.useCallback(() => {
@@ -66,9 +69,15 @@ export default function Login() {
         setErrorMessage("");
         try {
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            if (userCredential) {
+            const userDoc = await getDoc(doc(firestore, "spotifyTokens", userCredential.user.uid));
+
+            if (userDoc.exists()) {
                 router.push("/(tabs)/mapview");
             }
+            else {
+                router.push("/connect-spotify");
+            }
+
         } catch (error) {
             handleAuthError(error);
         }
