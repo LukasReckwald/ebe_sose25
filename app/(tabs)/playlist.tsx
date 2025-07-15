@@ -112,11 +112,33 @@ export default function PlaylistScreen() {
     };
 
     const togglePlayPause = async () => {
+        // Speichere aktuellen Zustand für Rollback
+        const currentPlayingState = isPlaying;
+        const newPlayingState = !isPlaying;
+
         try {
-            const endpoint = isPlaying ? '/me/player/pause' : '/me/player/play';
+            const endpoint = currentPlayingState ? '/me/player/pause' : '/me/player/play';
+
+            // Sofortige UI-Update für bessere User Experience
+            setIsPlaying(newPlayingState);
+
             await spotifyAPI(endpoint, { method: 'PUT' });
-            setIsPlaying(!isPlaying);
+
+            // Bestätige den Status nach kurzer Verzögerung - aber nur wenn sich der Zustand nicht geändert hat
+            setTimeout(() => {
+                // Nur aktualisieren wenn der User nicht inzwischen wieder geklickt hat
+                if (isPlaying === newPlayingState) {
+                    fetchCurrentPlayback();
+                }
+            }, 1000);
         } catch (error) {
+            // Revert UI-Update bei Fehler - aber nur wenn sich nichts geändert hat
+            setTimeout(() => {
+                if (isPlaying === newPlayingState) {
+                    setIsPlaying(currentPlayingState);
+                }
+            }, 100);
+
             // Prüfe ob wirklich ein Gerät fehlt
             try {
                 const devices = await spotifyAPI('/me/player/devices');
@@ -187,12 +209,24 @@ export default function PlaylistScreen() {
     };
 
     const playPlaylist = async (playlistId: string) => {
+        // Speichere aktuellen Zustand
+        const currentPlayingState = isPlaying;
+
         try {
             await spotifyAPI('/me/player/play', {
                 method: 'PUT',
                 body: JSON.stringify({ context_uri: `spotify:playlist:${playlistId}` }),
             });
-            // Erfolgreich - keine Meldung nötig
+
+            // Sofortige UI-Update
+            setIsPlaying(true);
+
+            // Bestätige den Status nach kurzer Verzögerung - nur wenn sich nichts geändert hat
+            setTimeout(() => {
+                if (isPlaying === true) {
+                    fetchCurrentPlayback();
+                }
+            }, 1500);
         } catch (error) {
             // Prüfe ob wirklich ein Gerät fehlt
             try {
@@ -205,6 +239,13 @@ export default function PlaylistScreen() {
                 } else {
                     // Ignoriere Fehler wenn Geräte vorhanden sind
                     console.log('Playlist-Playback möglicherweise erfolgreich trotz API-Fehler');
+                    // Versuche trotzdem UI zu aktualisieren
+                    setIsPlaying(true);
+                    setTimeout(() => {
+                        if (isPlaying === true) {
+                            fetchCurrentPlayback();
+                        }
+                    }, 1500);
                 }
             } catch (deviceError) {
                 Alert.alert('Playback-Fehler', 'Stelle sicher, dass Spotify auf einem Gerät geöffnet ist.');
@@ -218,7 +259,14 @@ export default function PlaylistScreen() {
                 method: 'PUT',
                 body: JSON.stringify({ uris: [trackUri] }),
             });
-            // Erfolgreich - keine Meldung nötig
+
+            // Sofortige UI-Update
+            setIsPlaying(true);
+
+            // Bestätige den Status nach kurzer Verzögerung - nur wenn sich nichts geändert hat
+            setTimeout(() => {
+                fetchCurrentPlayback();
+            }, 1500);
         } catch (error) {
             // Prüfe ob wirklich ein Gerät fehlt
             try {
@@ -228,21 +276,16 @@ export default function PlaylistScreen() {
                 } else {
                     // Ignoriere Fehler wenn Geräte vorhanden sind
                     console.log('Track-Playback möglicherweise erfolgreich trotz API-Fehler');
+                    // Versuche trotzdem UI zu aktualisieren
+                    setIsPlaying(true);
+                    setTimeout(() => {
+                        fetchCurrentPlayback();
+                    }, 1500);
                 }
             } catch (deviceError) {
                 Alert.alert('Playback-Fehler', 'Stelle sicher, dass Spotify auf einem Gerät geöffnet ist.');
             }
         }
-    };
-
-    // Zur Auth zurück
-    const goToAuth = () => {
-        router.push('/spotify-auth');
-    };
-
-    // Zur Profile/Settings (falls du eine hast)
-    const goToProfile = () => {
-        router.push('/profile'); // oder deine Profile-Route
     };
 
     if (isLoading) {
@@ -262,7 +305,7 @@ export default function PlaylistScreen() {
                 <Text style={styles.errorText}>
                     Deine Spotify-Verbindung ist ungültig. Bitte verbinde dich erneut.
                 </Text>
-                <TouchableOpacity onPress={goToAuth} style={styles.reconnectBtn}>
+                <TouchableOpacity onPress={() => router.push('/spotify-auth')} style={styles.reconnectBtn}>
                     <Text style={styles.btnText}>Neu verbinden</Text>
                 </TouchableOpacity>
             </SafeAreaView>
@@ -273,14 +316,6 @@ export default function PlaylistScreen() {
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.pageTitle}>Playlists</Text>
-                <View style={styles.headerActions}>
-                    <TouchableOpacity onPress={goToProfile} style={styles.iconButton}>
-                        <Ionicons name="person-outline" size={20} color="#6B7280" />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={goToAuth} style={styles.iconButton}>
-                        <Ionicons name="settings-outline" size={20} color="#6B7280" />
-                    </TouchableOpacity>
-                </View>
             </View>
 
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -476,7 +511,7 @@ export default function PlaylistScreen() {
                         <Ionicons
                             name={isPlaying ? "pause" : "play"}
                             size={20}
-                            color="#374151"
+                            color="white"
                         />
                     </TouchableOpacity>
                 </View>
@@ -496,35 +531,19 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
     },
 
-    // Header
+    // Header - Vereinfacht ohne Buttons
     header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
         paddingHorizontal: 20,
         paddingVertical: 16,
         borderBottomWidth: 1,
         borderBottomColor: '#E5E7EB',
         backgroundColor: '#FFFFFF',
+        alignItems: 'center',
     },
     pageTitle: {
         fontSize: 24,
         fontWeight: '600',
         color: '#4B5563',
-    },
-    headerActions: {
-        flexDirection: 'row',
-        gap: 8,
-    },
-    iconButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 8,
-        backgroundColor: '#F9FAFB',
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
     },
 
     // Profile Card
@@ -687,17 +706,17 @@ const styles = StyleSheet.create({
 
     // Horizontal Playlist ScrollView
     playlistScrollContainer: {
-        paddingLeft: 10, // Padding am Anfang des Scrollviews
-        paddingRight: 20, // Padding am Ende des Scrollviews
-        paddingBottom: 10, // Padding unten für Dropschadow
-        paddingTop: 5, // Padding oben für Dropschadow
+        paddingLeft: 10,
+        paddingRight: 20,
+        paddingBottom: 10,
+        paddingTop: 5,
     },
     playlistCard: {
-        width: 160, // Feste Breite für horizontales Scrolling
+        width: 160,
         backgroundColor: '#FFFFFF',
         borderRadius: 12,
         padding: 12,
-        marginRight: 16, // Abstand zwischen den Karten
+        marginRight: 16,
         elevation: 5,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
@@ -711,7 +730,7 @@ const styles = StyleSheet.create({
     },
     playlistArtwork: {
         width: '100%',
-        height: 136, // Quadratisches Artwork
+        height: 136,
         borderRadius: 8,
         marginBottom: 8,
     },
@@ -838,7 +857,7 @@ const styles = StyleSheet.create({
         fontStyle: 'italic',
     },
 
-    // Now Playing Bar
+    // Now Playing Bar - Verbessert
     nowPlayingBar: {
         position: 'absolute',
         left: 20,
@@ -850,11 +869,11 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderRadius: 12,
-        elevation: 5,
+        elevation: 8,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
     },
     nowPlayingArtwork: {
         width: 48,
@@ -882,6 +901,11 @@ const styles = StyleSheet.create({
         backgroundColor: '#3B82F6',
         justifyContent: 'center',
         alignItems: 'center',
+        elevation: 3,
+        shadowColor: '#3B82F6',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
     },
 
     // Loading & Error States
