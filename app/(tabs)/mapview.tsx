@@ -168,7 +168,8 @@ export default function Mapview() {
     if (!location) {
         return (
             <View style={[styles.container, styles.center]}>
-                <ActivityIndicator size="large" />
+                <ActivityIndicator size="large" color="#1F2937" />
+                <Text style={styles.loadingText}>Lade Standort...</Text>
             </View>
         );
     }
@@ -196,8 +197,8 @@ export default function Mapview() {
                         <Circle
                             center={marker}
                             radius={radius}
-                            strokeColor={isInZone ? "rgba(34,197,94,0.8)" : "rgba(30,144,255,0.8)"}
-                            fillColor={isInZone ? "rgba(34,197,94,0.2)" : "rgba(30,144,255,0.2)"}
+                            strokeColor={isInZone ? "rgba(16, 185, 129, 0.8)" : "rgba(59, 130, 246, 0.8)"}
+                            fillColor={isInZone ? "rgba(16, 185, 129, 0.2)" : "rgba(59, 130, 246, 0.2)"}
                         />
                     </>
                 )}
@@ -207,7 +208,7 @@ export default function Mapview() {
                     <Marker
                         coordinate={fakeLocation}
                         title="Fake Position"
-                        pinColor="lightblue"
+                        pinColor="#6B7280"
                         identifier="fake-location"
                     />
                 )}
@@ -254,7 +255,7 @@ export default function Mapview() {
 
             {/* Live-Status Banner */}
             {isTracking && (
-                <View style={[styles.statusBanner, { backgroundColor: isInZone ? "#22c55e" : "#1E90FF" }]}>
+                <View style={[styles.statusBanner, { backgroundColor: isInZone ? "#10B981" : "#3B82F6" }]}>
                     <Text style={styles.statusText}>
                         {isInZone ? "🎯 IM ZIELBEREICH!" : "📍 Tracking aktiv"}
                     </Text>
@@ -275,9 +276,9 @@ export default function Mapview() {
                         step={10}
                         value={radius}
                         onValueChange={setRadius}
-                        minimumTrackTintColor="#1E90FF"
-                        maximumTrackTintColor="#ccc"
-                        thumbTintColor="#1E90FF"
+                        minimumTrackTintColor="#3B82F6"
+                        maximumTrackTintColor="#E5E7EB"
+                        thumbTintColor="#3B82F6"
                     />
                     <View style={styles.buttonRow}>
                         <TouchableOpacity style={styles.saveButton} onPress={saveGeofence}>
@@ -334,11 +335,16 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#F9FAFB", // Heller, sanfter Hintergrund
+        backgroundColor: "#FDFCFB", // Wie im Player
     },
     center: {
         justifyContent: "center",
         alignItems: "center",
+    },
+    loadingText: {
+        fontSize: 16,
+        color: "#6B7280",
+        marginTop: 16,
     },
     map: {
         flex: 1,
@@ -347,67 +353,91 @@ const styles = StyleSheet.create({
         position: "absolute",
         bottom: 100,
         alignSelf: "center",
-        backgroundColor: "#3B82F6", // Blau für den FAB
+        backgroundColor: "#1F2937", // Dunkler wie im Player
         width: 60,
         height: 60,
         borderRadius: 30,
         alignItems: "center",
         justifyContent: "center",
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
-        shadowRadius: 4,
+        shadowRadius: 8,
+        elevation: 5,
     },
     statusBanner: {
         position: "absolute",
         top: 50,
         left: 20,
         right: 20,
-        padding: 15,
+        padding: 16,
         borderRadius: 12,
         alignItems: "center",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
         elevation: 5,
-        backgroundColor: "#34D399", // Grüner Status für "In Zone"
     },
     statusText: {
         color: "white",
-        fontSize: 18,
-        fontWeight: "bold",
+        fontSize: 16,
+        fontWeight: "600", // Wie im Player
     },
     distanceText: {
         color: "white",
         fontSize: 14,
-        marginTop: 5,
+        marginTop: 4,
+        fontWeight: "500",
     },
     devModeContainer: {
         position: "absolute",
         top: 140,
         right: 20,
-        backgroundColor: "#4B5563", // Dunkler Hintergrund für Dev-Mode
-        padding: 12,
-        borderRadius: 8,
+        backgroundColor: "white", // Heller wie im Player
+        padding: 16,
+        borderRadius: 12,
         minWidth: 160,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
         elevation: 5,
+        borderWidth: 1,
+        borderColor: "#E5E7EB",
     },
     devModeTitle: {
-        color: "white",
-        fontSize: 14,
-        fontWeight: "bold",
+        color: "#1F2937", // Dunkler Text wie im Player
+        fontSize: 16,
+        fontWeight: "600",
         marginBottom: 8,
         textAlign: "center",
     },
+    devModeSubtitle: {
+        color: "#6B7280",
+        fontSize: 12,
+        marginBottom: 12,
+        textAlign: "center",
+    },
     devButton: {
-        backgroundColor: "rgba(255,255,255,0.2)",
-        padding: 10,
+        backgroundColor: "#F3F4F6", // Heller wie im Player
+        padding: 12,
         borderRadius: 8,
         marginBottom: 8,
         alignItems: "center",
+        borderWidth: 1,
+        borderColor: "#E5E7EB",
+    },
+    devButtonActive: {
+        backgroundColor: "#3B82F6",
+        borderColor: "#3B82F6",
     },
     devButtonSecondary: {
-        backgroundColor: "rgba(255,255,255,0.1)",
+        backgroundColor: "#FEF2F2",
+        borderColor: "#FECACA",
     },
     devButtonText: {
-        color: "white",
+        color: "#1F2937", // Dunkler Text
         fontSize: 14,
         fontWeight: "500",
         textAlign: "center",
@@ -416,64 +446,77 @@ const styles = StyleSheet.create({
         position: "absolute",
         bottom: 100,
         right: 20,
-        backgroundColor: "#4B5563", // Dunkel für Toggle Button
+        backgroundColor: "#6B7280", // Grauer wie im Player
         width: 50,
         height: 50,
         borderRadius: 25,
         alignItems: "center",
         justifyContent: "center",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 5,
     },
     sliderContainer: {
         position: "absolute",
         bottom: 180,
         left: 20,
         right: 20,
-        backgroundColor: "#FFFFFF", // Heller Hintergrund für den Slider
-        padding: 15,
+        backgroundColor: "white", // Weiß wie im Player
+        padding: 16,
         borderRadius: 12,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
         elevation: 5,
+        borderWidth: 1,
+        borderColor: "#E5E7EB",
     },
     sliderLabel: {
-        marginBottom: 10,
+        marginBottom: 12,
         fontSize: 16,
-        fontWeight: "500",
-        color: "#4B5563", // Graue Schrift für den Label
+        fontWeight: "600", // Wie im Player
+        color: "#1F2937",
     },
     buttonRow: {
         flexDirection: "row",
-        marginTop: 10,
-        gap: 10,
+        marginTop: 12,
+        gap: 12,
     },
     saveButton: {
         flex: 1,
-        backgroundColor: "#3B82F6", // Blau für die Speichern-Schaltfläche
+        backgroundColor: "#1F2937", // Dunkler wie im Player
         padding: 12,
         borderRadius: 8,
         alignItems: "center",
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
+        elevation: 3,
     },
     stopButton: {
         flex: 1,
-        backgroundColor: "#DC2626", // Rote Farbe für Stoppen
+        backgroundColor: "#DC2626", // Rot bleibt
         padding: 12,
         borderRadius: 8,
         alignItems: "center",
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
+        elevation: 3,
     },
     saveText: {
-        color: "#fff",
-        fontSize: 16,
-        fontWeight: "600", // Etwas stärkere Schrift für den Button Text
+        color: "white",
+        fontSize: 14,
+        fontWeight: "600", // Wie im Player
     },
     stopText: {
-        color: "#fff",
-        fontSize: 16,
+        color: "white",
+        fontSize: 14,
         fontWeight: "600",
     },
 });
