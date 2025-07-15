@@ -6,6 +6,10 @@ import {
     TouchableOpacity,
     Text,
     Alert,
+    Modal,
+    ScrollView,
+    Image,
+    TextInput,
 } from "react-native";
 import MapView, { Marker, Circle } from "react-native-maps";
 import * as Location from "expo-location";
@@ -13,130 +17,324 @@ import * as TaskManager from "expo-task-manager";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
-import {SafeAreaView} from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
+import {
+    getValidSpotifyTokens,
+    spotifyAPICall,
+} from '@/utils/spotifyTokenUtils';
 
 const GEOFENCE_TASK = "GEOFENCE_TASK";
 
-export default function Mapview() {
+interface GeoPlaylist {
+    id: string;
+    name: string;
+    location: {
+        latitude: number;
+        longitude: number;
+    };
+    radius: number;
+    spotifyPlaylistId: string;
+    spotifyPlaylistName: string;
+    spotifyPlaylistImage?: string;
+    isActive: boolean;
+}
+
+export default function GeoPlaylistMap() {
     const [location, setLocation] = useState(null);
-    const [marker, setMarker] = useState(null);
+    const [selectedLocation, setSelectedLocation] = useState(null);
     const [radius, setRadius] = useState(100);
-    const [isInZone, setIsInZone] = useState(false);
-    const [distance, setDistance] = useState(null);
-    const [isTracking, setIsTracking] = useState(false);
     const [devMode, setDevMode] = useState(false);
     const [fakeLocation, setFakeLocation] = useState(null);
-    const [mapMode, setMapMode] = useState("geofence"); // "geofence" oder "fake-position"
+    const [mapMode, setMapMode] = useState("normal"); // "normal", "fake-position", "select-location"
     const mapRef = useRef(null);
 
+    // Playlist-bezogene States
+    const [geoPlaylists, setGeoPlaylists] = useState<GeoPlaylist[]>([]);
+    const [spotifyPlaylists, setSpotifyPlaylists] = useState<any[]>([]);
+    const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [newPlaylistName, setNewPlaylistName] = useState("");
+    const [selectedSpotifyPlaylist, setSelectedSpotifyPlaylist] = useState(null);
+    const [activeGeoPlaylists, setActiveGeoPlaylists] = useState<string[]>([]);
+    const [lastPlayedPlaylist, setLastPlayedPlaylist] = useState<string | null>(null);
+
     useEffect(() => {
-        (async () => {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== "granted") {
-                Alert.alert("Fehler", "Standortberechtigung nicht erteilt");
+        initializeApp();
+    }, []);
+
+    // Optimiertes Location Tracking für Geo-Playlisten
+    useEffect(() => {
+        let interval;
+        if (geoPlaylists.length > 0) {
+            interval = setInterval(async () => {
+                let currentPos;
+
+                if (devMode && fakeLocation) {
+                    currentPos = fakeLocation;
+                } else {
+                    try {
+                        const loc = await Location.getCurrentPositionAsync({
+                            accuracy: Location.Accuracy.Balanced,
+                            maximumAge: 10000,
+                            timeout: 5000,
+                        });
+                        currentPos = loc.coords;
+                    } catch (error) {
+                        console.error("Fehler beim Abrufen der Position:", error);
+                        return;
+                    }
+                }
+
+                console.log("Current Position:", currentPos);
+                await checkGeoPlaylists(currentPos);
+            }, 5000);
+        }
+
+        return () => {
+            if (interval) {
+                clearInterval(interval);
+            }
+        };
+    }, [geoPlaylists, devMode, fakeLocation, activeGeoPlaylists, lastPlayedPlaylist]);
+
+    // Separate Location Updates für Map Display
+    useEffect(() => {
+        let watchId;
+
+        const startWatching = async () => {
+            try {
+                watchId = await Location.watchPositionAsync(
+                    {
+                        accuracy: Location.Accuracy.Balanced,
+                        timeInterval: 5000,
+                        distanceInterval: 10,
+                    },
+                    (loc) => {
+                        if (!devMode) {
+                            setLocation({
+                                latitude: loc.coords.latitude,
+                                longitude: loc.coords.longitude,
+                            });
+                        }
+                    }
+                );
+            } catch (error) {
+                console.error("Fehler beim Starten des Location Watching:", error);
+            }
+        };
+
+        startWatching();
+
+        return () => {
+            if (watchId) {
+                watchId.remove();
+            }
+        };
+    }, [devMode]);
+
+    const initializeApp = async () => {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+            Alert.alert("Fehler", "Standortberechtigung nicht erteilt");
+            return;
+        }
+
+        const loc = await Location.getCurrentPositionAsync({});
+        setLocation({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+        });
+
+        await loadGeoPlaylists();
+        await loadSpotifyPlaylists();
+        console.log("App initialisiert");
+    };
+
+    const loadGeoPlaylists = async () => {
+        try {
+            const saved = await AsyncStorage.getItem("geoPlaylists");
+            if (saved) {
+                const playlists = JSON.parse(saved);
+                setGeoPlaylists(playlists);
+            }
+        } catch (error) {
+            console.error("Fehler beim Laden der Geo-Playlisten:", error);
+        }
+    };
+
+    const saveGeoPlaylists = async (playlists: GeoPlaylist[]) => {
+        try {
+            await AsyncStorage.setItem("geoPlaylists", JSON.stringify(playlists));
+            setGeoPlaylists(playlists);
+        } catch (error) {
+            console.error("Fehler beim Speichern der Geo-Playlisten:", error);
+        }
+    };
+
+    const loadSpotifyPlaylists = async () => {
+        try {
+            const tokens = await getValidSpotifyTokens();
+            if (tokens) {
+                const data = await spotifyAPICall('/me/playlists?limit=50');
+                setSpotifyPlaylists(data.items);
+            }
+        } catch (error) {
+            console.error("Fehler beim Laden der Spotify-Playlisten:", error);
+        }
+    };
+
+    const checkGeoPlaylists = async (currentPos: any) => {
+        console.log("Checking geo playlists...", {
+            currentPos,
+            geoPlaylistsCount: geoPlaylists.length,
+            activeCount: geoPlaylists.filter(p => p.isActive).length
+        });
+
+        const currentlyActive: string[] = [];
+
+        for (const geoPlaylist of geoPlaylists) {
+            if (!geoPlaylist.isActive) {
+                console.log(`Skipping inactive playlist: ${geoPlaylist.name}`);
+                continue;
+            }
+
+            const distance = getDistance(currentPos, geoPlaylist.location);
+            const isInZone = distance <= geoPlaylist.radius;
+
+            console.log(`Playlist "${geoPlaylist.name}": distance=${distance.toFixed(0)}m, radius=${geoPlaylist.radius}m, inZone=${isInZone}`);
+
+            if (isInZone) {
+                currentlyActive.push(geoPlaylist.id);
+
+                if (!activeGeoPlaylists.includes(geoPlaylist.id) &&
+                    lastPlayedPlaylist !== geoPlaylist.id) {
+                    console.log(`Entering zone for playlist: ${geoPlaylist.name}`);
+                    await playGeoPlaylist(geoPlaylist);
+                    setLastPlayedPlaylist(geoPlaylist.id);
+                }
+            }
+        }
+
+        console.log("Currently active geo-playlists:", currentlyActive);
+        setActiveGeoPlaylists(currentlyActive);
+
+        if (currentlyActive.length === 0 && activeGeoPlaylists.length > 0) {
+            console.log("Left all zones, resetting lastPlayedPlaylist");
+            setLastPlayedPlaylist(null);
+        }
+    };
+
+    const playGeoPlaylist = async (geoPlaylist: GeoPlaylist) => {
+        console.log(`Attempting to play geo-playlist: ${geoPlaylist.name}`);
+
+        try {
+            const tokens = await getValidSpotifyTokens();
+            if (!tokens) {
+                console.error("No valid Spotify tokens found");
+                Alert.alert("Spotify nicht verbunden", "Bitte verbinde dich mit Spotify um Geo-Playlisten zu nutzen.");
                 return;
             }
 
-            const loc = await Location.getCurrentPositionAsync({});
-            setLocation({
-                latitude: loc.coords.latitude,
-                longitude: loc.coords.longitude,
+            console.log("Playing playlist:", geoPlaylist.spotifyPlaylistId);
+
+            await spotifyAPICall('/me/player/play', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    context_uri: `spotify:playlist:${geoPlaylist.spotifyPlaylistId}`
+                }),
             });
 
-            const saved = await AsyncStorage.getItem("geo");
-            if (saved) {
-                const { marker: m, radius: r } = JSON.parse(saved);
-                setMarker(m);
-                setRadius(r);
-                setIsTracking(true);
-                await startGeofenceTask();
-            }
-        })();
-    }, []);
+            console.log("Playlist started successfully");
 
-    // Live-Tracking der Position
-    useEffect(() => {
-        if (!marker || !isTracking) return;
-
-        const interval = setInterval(async () => {
-            let currentPos;
-
-            if (devMode && fakeLocation) {
-                // Verwende Fake-Position im Dev-Mode
-                currentPos = fakeLocation;
-            } else {
-                // Verwende echte Position
-                const loc = await Location.getCurrentPositionAsync({});
-                currentPos = loc.coords;
-            }
-
-            const dist = getDistance(currentPos, marker);
-            setDistance(dist);
-
-            const wasInZone = isInZone;
-            const nowInZone = dist <= radius;
-            setIsInZone(nowInZone);
-
-            // Wenn gerade in Zone gekommen
-            if (!wasInZone && nowInZone) {
-                Alert.alert("🎯 Geofence erreicht!", `Du bist im Zielbereich! (${dist.toFixed(0)}m)`);
-            }
-        }, 2000); // Alle 2 Sekunden checken
-
-        return () => clearInterval(interval);
-    }, [marker, radius, isTracking, isInZone, devMode, fakeLocation]);
-
-    const saveGeofence = async () => {
-        if (!marker) return;
-
-        await AsyncStorage.setItem("geo", JSON.stringify({ marker, radius }));
-        setIsTracking(true);
-        await startGeofenceTask();
-
-        // Sofort-Check
-        let currentPos;
-        if (devMode && fakeLocation) {
-            currentPos = fakeLocation;
-        } else {
-            const loc = await Location.getCurrentPositionAsync({});
-            currentPos = loc.coords;
-        }
-
-        const dist = getDistance(currentPos, marker);
-        setDistance(dist);
-
-        if (dist <= radius) {
-            setIsInZone(true);
-            Alert.alert("Geofence", "Du bist bereits im Zielbereich!");
-        } else {
-            setIsInZone(false);
-            Alert.alert("Gespeichert", `Geofence aktiviert! Entfernung: ${dist.toFixed(0)}m`);
-        }
-    };
-
-    const stopGeofence = async () => {
-        setIsTracking(false);
-        setIsInZone(false);
-        setDistance(null);
-        await Location.stopLocationUpdatesAsync(GEOFENCE_TASK);
-        await AsyncStorage.removeItem("geo");
-        setMarker(null);
-        Alert.alert("Gestoppt", "Geofence deaktiviert");
-    };
-
-    const startGeofenceTask = async () => {
-        try {
-            const hasStarted = await Location.hasStartedLocationUpdatesAsync(GEOFENCE_TASK);
-            if (!hasStarted) {
-                await Location.startLocationUpdatesAsync(GEOFENCE_TASK, {
-                    accuracy: Location.Accuracy.High,
-                    distanceInterval: 5,
-                    deferredUpdatesInterval: 1000,
-                });
-            }
+            Alert.alert(
+                "🎵 Geo-Playlist gestartet!",
+                `"${geoPlaylist.spotifyPlaylistName}" wird jetzt gespielt`,
+                [{ text: "Cool!", style: "default" }]
+            );
         } catch (error) {
-            console.error("Fehler beim Starten der Geofence:", error);
+            console.error("Fehler beim Abspielen der Geo-Playlist:", error);
+
+            try {
+                const devices = await spotifyAPICall('/me/player/devices');
+                console.log("Available devices:", devices.devices.length);
+
+                if (devices.devices.length === 0) {
+                    Alert.alert(
+                        "🎵 Geo-Playlist bereit!",
+                        `"${geoPlaylist.spotifyPlaylistName}" würde jetzt gespielt werden, aber kein Spotify-Gerät ist verfügbar.`,
+                        [
+                            { text: "Spotify öffnen", onPress: () => Linking.openURL('spotify://') },
+                            { text: "OK" }
+                        ]
+                    );
+                } else {
+                    Alert.alert(
+                        "🎵 Geo-Playlist gestartet!",
+                        `"${geoPlaylist.spotifyPlaylistName}" sollte jetzt spielen (trotz API-Warnung)`,
+                        [{ text: "OK" }]
+                    );
+                }
+            } catch (deviceError) {
+                console.error("Device check failed:", deviceError);
+                Alert.alert("Geo-Playlist", `Playlist "${geoPlaylist.spotifyPlaylistName}" ist bereit, aber Spotify ist nicht verfügbar.`);
+            }
         }
+    };
+
+    const createGeoPlaylist = async () => {
+        if (!selectedLocation || !selectedSpotifyPlaylist || !newPlaylistName.trim()) {
+            Alert.alert("Fehler", "Bitte alle Felder ausfüllen");
+            return;
+        }
+
+        const newGeoPlaylist: GeoPlaylist = {
+            id: Date.now().toString(),
+            name: newPlaylistName.trim(),
+            location: selectedLocation,
+            radius: radius,
+            spotifyPlaylistId: selectedSpotifyPlaylist.id,
+            spotifyPlaylistName: selectedSpotifyPlaylist.name,
+            spotifyPlaylistImage: selectedSpotifyPlaylist.images?.[0]?.url,
+            isActive: true,
+        };
+
+        const updatedPlaylists = [...geoPlaylists, newGeoPlaylist];
+        await saveGeoPlaylists(updatedPlaylists);
+
+        setShowCreateModal(false);
+        setSelectedLocation(null);
+        setNewPlaylistName("");
+        setSelectedSpotifyPlaylist(null);
+        setMapMode("normal");
+
+        Alert.alert("Erfolg!", `Geo-Playlist "${newGeoPlaylist.name}" wurde erstellt!`);
+    };
+
+    const toggleGeoPlaylist = async (id: string) => {
+        const updatedPlaylists = geoPlaylists.map(playlist =>
+            playlist.id === id
+                ? { ...playlist, isActive: !playlist.isActive }
+                : playlist
+        );
+        await saveGeoPlaylists(updatedPlaylists);
+    };
+
+    const deleteGeoPlaylist = async (id: string) => {
+        Alert.alert(
+            "Löschen bestätigen",
+            "Möchtest du diese Geo-Playlist wirklich löschen?",
+            [
+                { text: "Abbrechen", style: "cancel" },
+                {
+                    text: "Löschen",
+                    style: "destructive",
+                    onPress: async () => {
+                        const updatedPlaylists = geoPlaylists.filter(p => p.id !== id);
+                        await saveGeoPlaylists(updatedPlaylists);
+                    }
+                }
+            ]
+        );
     };
 
     const centerMap = () => {
@@ -149,8 +347,7 @@ export default function Mapview() {
         }
     };
 
-    // Distanzberechnung
-    const getDistance = (point1, point2) => {
+    const getDistance = (point1: any, point2: any) => {
         const R = 6371000;
         const lat1 = point1.latitude * Math.PI / 180;
         const lat2 = point2.latitude * Math.PI / 180;
@@ -179,31 +376,60 @@ export default function Mapview() {
             <MapView
                 ref={mapRef}
                 style={styles.map}
-                showsUserLocation={!devMode} // Verstecke echte Position im Dev-Mode
+                showsUserLocation={!devMode}
                 initialRegion={{ ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
                 onPress={(e) => {
-                    if (mapMode === "geofence") {
-                        setMarker(e.nativeEvent.coordinate);
+                    if (mapMode === "select-location") {
+                        setSelectedLocation(e.nativeEvent.coordinate);
+                        setShowCreateModal(true);
                     } else if (mapMode === "fake-position") {
                         setFakeLocation(e.nativeEvent.coordinate);
-                        setMapMode("geofence"); // Zurück zum normalen Modus
+                        setMapMode("normal");
                         Alert.alert("Fake Position gesetzt!", `Lat: ${e.nativeEvent.coordinate.latitude.toFixed(5)}, Lng: ${e.nativeEvent.coordinate.longitude.toFixed(5)}`);
                     }
                 }}
             >
-                {marker && (
-                    <>
-                        <Marker coordinate={marker} title="Geofence Ziel" />
+                {geoPlaylists.map((geoPlaylist) => (
+                    <React.Fragment key={geoPlaylist.id}>
+                        <Marker
+                            coordinate={geoPlaylist.location}
+                            title={geoPlaylist.name}
+                            description={geoPlaylist.spotifyPlaylistName}
+                            pinColor={geoPlaylist.isActive ? "#10B981" : "#6B7280"}
+                        />
                         <Circle
-                            center={marker}
+                            center={geoPlaylist.location}
+                            radius={geoPlaylist.radius}
+                            strokeColor={
+                                activeGeoPlaylists.includes(geoPlaylist.id)
+                                    ? "rgba(16, 185, 129, 0.8)"
+                                    : geoPlaylist.isActive
+                                        ? "rgba(59, 130, 246, 0.8)"
+                                        : "rgba(107, 114, 128, 0.5)"
+                            }
+                            fillColor={
+                                activeGeoPlaylists.includes(geoPlaylist.id)
+                                    ? "rgba(16, 185, 129, 0.2)"
+                                    : geoPlaylist.isActive
+                                        ? "rgba(59, 130, 246, 0.2)"
+                                        : "rgba(107, 114, 128, 0.1)"
+                            }
+                        />
+                    </React.Fragment>
+                ))}
+
+                {selectedLocation && (
+                    <>
+                        <Marker coordinate={selectedLocation} title="Neue Geo-Playlist" pinColor="#F59E0B" />
+                        <Circle
+                            center={selectedLocation}
                             radius={radius}
-                            strokeColor={isInZone ? "rgba(16, 185, 129, 0.8)" : "rgba(59, 130, 246, 0.8)"}
-                            fillColor={isInZone ? "rgba(16, 185, 129, 0.2)" : "rgba(59, 130, 246, 0.2)"}
+                            strokeColor="rgba(245, 158, 11, 0.8)"
+                            fillColor="rgba(245, 158, 11, 0.2)"
                         />
                     </>
                 )}
 
-                {/* Fake-Position im Dev-Mode */}
                 {devMode && fakeLocation && (
                     <Marker
                         coordinate={fakeLocation}
@@ -214,27 +440,55 @@ export default function Mapview() {
                 )}
             </MapView>
 
-            {/* Dev-Mode Controls */}
+            {activeGeoPlaylists.length > 0 && (
+                <View style={styles.statusBanner}>
+                    <Text style={styles.statusText}>
+                        🎵 {activeGeoPlaylists.length} Geo-Playlist{activeGeoPlaylists.length > 1 ? 's' : ''} aktiv
+                    </Text>
+                </View>
+            )}
+
+            {devMode && (
+                <View style={styles.debugContainer}>
+                    <Text style={styles.debugTitle}>🐛 Debug Info</Text>
+                    <Text style={styles.debugText}>Geo-Playlisten: {geoPlaylists.length}</Text>
+                    <Text style={styles.debugText}>Aktive Zonen: {activeGeoPlaylists.length}</Text>
+                    <Text style={styles.debugText}>
+                        Position: {fakeLocation ? "Fake" : "Real"}
+                    </Text>
+                    {geoPlaylists.length > 0 && (
+                        <>
+                            <Text style={styles.debugText}>Nächste Playlist:</Text>
+                            {geoPlaylists.slice(0, 1).map(playlist => {
+                                const currentPos = fakeLocation || location;
+                                const distance = currentPos ? getDistance(currentPos, playlist.location) : 0;
+                                return (
+                                    <Text key={playlist.id} style={styles.debugText}>
+                                        "{playlist.name}": {distance.toFixed(0)}m
+                                    </Text>
+                                );
+                            })}
+                        </>
+                    )}
+                </View>
+            )}
+
             {devMode && (
                 <View style={styles.devModeContainer}>
                     <Text style={styles.devModeTitle}>🛠️ Dev-Mode</Text>
-                    <Text style={styles.devModeSubtitle}>
-                        Modus: {mapMode === "geofence" ? "Geofence setzen" : "Fake-Position setzen"}
-                    </Text>
-
                     <TouchableOpacity
                         style={[styles.devButton, mapMode === "fake-position" && styles.devButtonActive]}
                         onPress={() => {
                             if (mapMode === "fake-position") {
-                                setMapMode("geofence");
+                                setMapMode("normal");
                             } else {
                                 setMapMode("fake-position");
-                                Alert.alert("Fake Position Modus", "Tippe jetzt auf die Karte um deine Position zu setzen");
+                                Alert.alert("Fake Position Modus", "Tippe auf die Karte um deine Position zu setzen");
                             }
                         }}
                     >
                         <Text style={styles.devButtonText}>
-                            {mapMode === "fake-position" ? "Abbrechen" : "Fake Position setzen"}
+                            {mapMode === "fake-position" ? "Abbrechen" : "Fake Position"}
                         </Text>
                     </TouchableOpacity>
 
@@ -243,82 +497,199 @@ export default function Mapview() {
                             style={[styles.devButton, styles.devButtonSecondary]}
                             onPress={() => {
                                 setFakeLocation(null);
-                                setMapMode("geofence");
-                                Alert.alert("Fake Position gelöscht", "Zurück zur echten Position");
+                                setMapMode("normal");
+                                Alert.alert("Fake Position gelöscht");
                             }}
                         >
-                            <Text style={styles.devButtonText}>Fake Position löschen</Text>
+                            <Text style={styles.devButtonText}>Position löschen</Text>
                         </TouchableOpacity>
                     )}
                 </View>
             )}
 
-            {/* Live-Status Banner */}
-            {isTracking && (
-                <View style={[styles.statusBanner, { backgroundColor: isInZone ? "#10B981" : "#3B82F6" }]}>
-                    <Text style={styles.statusText}>
-                        {isInZone ? "🎯 IM ZIELBEREICH!" : "📍 Tracking aktiv"}
-                    </Text>
-                    {distance && (
-                        <Text style={styles.distanceText}>
-                            Entfernung: {distance.toFixed(0)}m
-                        </Text>
-                    )}
-                </View>
-            )}
+            <View style={styles.fabContainer}>
+                <TouchableOpacity style={styles.fab} onPress={centerMap}>
+                    <Ionicons name="locate" size={24} color="white" />
+                </TouchableOpacity>
 
-            {marker && (
-                <View style={styles.sliderContainer}>
-                    <Text style={styles.sliderLabel}>Radius: {radius.toFixed(0)} m</Text>
-                    <Slider
-                        minimumValue={10}
-                        maximumValue={1000}
-                        step={10}
-                        value={radius}
-                        onValueChange={setRadius}
-                        minimumTrackTintColor="#3B82F6"
-                        maximumTrackTintColor="#E5E7EB"
-                        thumbTintColor="#3B82F6"
-                    />
-                    <View style={styles.buttonRow}>
-                        <TouchableOpacity style={styles.saveButton} onPress={saveGeofence}>
-                            <Text style={styles.saveText}>
-                                {isTracking ? "Aktualisieren" : "Geofence starten"}
-                            </Text>
+                <TouchableOpacity
+                    style={[styles.fab, styles.fabSecondary]}
+                    onPress={() => setShowPlaylistModal(true)}
+                >
+                    <Ionicons name="list" size={24} color="white" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.fab, styles.fabPrimary]}
+                    onPress={() => {
+                        setMapMode("select-location");
+                        Alert.alert("Standort wählen", "Tippe auf die Karte um einen Standort für deine neue Geo-Playlist zu wählen");
+                    }}
+                >
+                    <Ionicons name="add" size={24} color="white" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.fab, styles.fabDev]}
+                    onPress={() => {
+                        setDevMode(!devMode);
+                        if (!devMode) {
+                            Alert.alert("Dev-Mode aktiviert", "Du kannst jetzt deine Position faken!");
+                        } else {
+                            setFakeLocation(null);
+                            Alert.alert("Dev-Mode deaktiviert");
+                        }
+                    }}
+                >
+                    <Ionicons name={devMode ? "code" : "code-outline"} size={20} color="white" />
+                </TouchableOpacity>
+            </View>
+
+            <Modal visible={showPlaylistModal} animationType="slide" presentationStyle="pageSheet">
+                <SafeAreaView style={styles.modalContainer}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>Geo-Playlisten</Text>
+                        <TouchableOpacity onPress={() => setShowPlaylistModal(false)}>
+                            <Ionicons name="close" size={24} color="#6B7280" />
                         </TouchableOpacity>
-                        {isTracking && (
-                            <TouchableOpacity style={styles.stopButton} onPress={stopGeofence}>
-                                <Text style={styles.stopText}>Stoppen</Text>
-                            </TouchableOpacity>
-                        )}
                     </View>
-                </View>
-            )}
 
-            <TouchableOpacity style={styles.fab} onPress={centerMap}>
-                <Ionicons name="locate" size={28} color="white" />
-            </TouchableOpacity>
+                    <ScrollView style={styles.modalContent}>
+                        {geoPlaylists.length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Ionicons name="musical-notes-outline" size={64} color="#9CA3AF" />
+                                <Text style={styles.emptyStateTitle}>Keine Geo-Playlisten</Text>
+                                <Text style={styles.emptyStateText}>Erstelle deine erste Geo-Playlist!</Text>
+                            </View>
+                        ) : (
+                            geoPlaylists.map((playlist) => (
+                                <View key={playlist.id} style={styles.playlistCard}>
+                                    <Image
+                                        source={{ uri: playlist.spotifyPlaylistImage || 'https://via.placeholder.com/60' }}
+                                        style={styles.playlistImage}
+                                    />
+                                    <View style={styles.playlistInfo}>
+                                        <Text style={styles.playlistName}>{playlist.name}</Text>
+                                        <Text style={styles.playlistSpotify}>{playlist.spotifyPlaylistName}</Text>
+                                        <Text style={styles.playlistDetails}>
+                                            Radius: {playlist.radius}m • {playlist.isActive ? 'Aktiv' : 'Inaktiv'}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.playlistActions}>
+                                        <TouchableOpacity
+                                            style={[styles.toggleButton, playlist.isActive && styles.toggleButtonActive]}
+                                            onPress={() => toggleGeoPlaylist(playlist.id)}
+                                        >
+                                            <Ionicons
+                                                name={playlist.isActive ? "pause" : "play"}
+                                                size={16}
+                                                color="white"
+                                            />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={styles.deleteButton}
+                                            onPress={() => deleteGeoPlaylist(playlist.id)}
+                                        >
+                                            <Ionicons name="trash" size={16} color="white" />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            ))
+                        )}
+                    </ScrollView>
+                </SafeAreaView>
+            </Modal>
 
-            {/* Dev-Mode Toggle */}
-            <TouchableOpacity
-                style={styles.devToggle}
-                onPress={() => {
-                    setDevMode(!devMode);
-                    if (!devMode) {
-                        Alert.alert("Dev-Mode aktiviert", "Du kannst jetzt deine Position faken!");
-                    } else {
-                        setFakeLocation(null);
-                        Alert.alert("Dev-Mode deaktiviert", "Zurück zur echten Position");
-                    }
-                }}
-            >
-                <Ionicons name={devMode ? "code" : "code-outline"} size={24} color="white" />
-            </TouchableOpacity>
+            <Modal visible={showCreateModal} animationType="slide" presentationStyle="pageSheet">
+                <SafeAreaView style={styles.modalContainer}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>Neue Geo-Playlist</Text>
+                        <TouchableOpacity onPress={() => {
+                            setShowCreateModal(false);
+                            setSelectedLocation(null);
+                            setMapMode("normal");
+                        }}>
+                            <Ionicons name="close" size={24} color="#6B7280" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <ScrollView style={styles.modalContent}>
+                        <View style={styles.inputSection}>
+                            <Text style={styles.inputLabel}>Name der Geo-Playlist</Text>
+                            <TextInput
+                                value={newPlaylistName}
+                                onChangeText={setNewPlaylistName}
+                                placeholder="z.B. Gym Musik, Büro Vibes..."
+                                style={styles.textInput}
+                                placeholderTextColor="#9CA3AF"
+                            />
+                        </View>
+
+                        <View style={styles.inputSection}>
+                            <Text style={styles.inputLabel}>Radius: {radius}m</Text>
+                            <Slider
+                                minimumValue={10}
+                                maximumValue={500}
+                                step={10}
+                                value={radius}
+                                onValueChange={setRadius}
+                                minimumTrackTintColor="#3B82F6"
+                                maximumTrackTintColor="#E5E7EB"
+                                thumbTintColor="#3B82F6"
+                            />
+                        </View>
+
+                        <View style={styles.inputSection}>
+                            <Text style={styles.inputLabel}>Spotify-Playlist auswählen</Text>
+                            {selectedSpotifyPlaylist && (
+                                <View style={styles.selectedPlaylistCard}>
+                                    <Image
+                                        source={{ uri: selectedSpotifyPlaylist.images?.[0]?.url || 'https://via.placeholder.com/40' }}
+                                        style={styles.selectedPlaylistImage}
+                                    />
+                                    <Text style={styles.selectedPlaylistName}>{selectedSpotifyPlaylist.name}</Text>
+                                </View>
+                            )}
+
+                            <ScrollView style={styles.spotifyPlaylistList} showsVerticalScrollIndicator={false}>
+                                {spotifyPlaylists.map((playlist) => (
+                                    <TouchableOpacity
+                                        key={playlist.id}
+                                        style={[
+                                            styles.spotifyPlaylistItem,
+                                            selectedSpotifyPlaylist?.id === playlist.id && styles.spotifyPlaylistItemSelected
+                                        ]}
+                                        onPress={() => setSelectedSpotifyPlaylist(playlist)}
+                                    >
+                                        <Image
+                                            source={{ uri: playlist.images?.[0]?.url || 'https://via.placeholder.com/40' }}
+                                            style={styles.spotifyPlaylistImage}
+                                        />
+                                        <Text style={styles.spotifyPlaylistName}>{playlist.name}</Text>
+                                        <Text style={styles.spotifyPlaylistTracks}>{playlist.tracks.total} Songs</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        </View>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.createButton,
+                                (!newPlaylistName.trim() || !selectedSpotifyPlaylist) && styles.createButtonDisabled
+                            ]}
+                            onPress={createGeoPlaylist}
+                            disabled={!newPlaylistName.trim() || !selectedSpotifyPlaylist}
+                        >
+                            <Text style={styles.createButtonText}>Geo-Playlist erstellen</Text>
+                        </TouchableOpacity>
+                    </ScrollView>
+                </SafeAreaView>
+            </Modal>
         </SafeAreaView>
     );
 }
 
-// Vereinfachter Background Task
+// Task Manager für Background-Tracking
 TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }) => {
     if (error) {
         console.error("Geofence Task Error:", error);
@@ -335,7 +706,7 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#FDFCFB", // Wie im Player
+        backgroundColor: "#F9FAFB",
     },
     center: {
         justifyContent: "center",
@@ -349,27 +720,12 @@ const styles = StyleSheet.create({
     map: {
         flex: 1,
     },
-    fab: {
-        position: "absolute",
-        bottom: 100,
-        alignSelf: "center",
-        backgroundColor: "#1F2937", // Dunkler wie im Player
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        alignItems: "center",
-        justifyContent: "center",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 5,
-    },
     statusBanner: {
         position: "absolute",
-        top: 50,
+        top: 60,
         left: 20,
         right: 20,
+        backgroundColor: "#10B981",
         padding: 16,
         borderRadius: 12,
         alignItems: "center",
@@ -382,19 +738,33 @@ const styles = StyleSheet.create({
     statusText: {
         color: "white",
         fontSize: 16,
-        fontWeight: "600", // Wie im Player
+        fontWeight: "600",
     },
-    distanceText: {
-        color: "white",
+    debugContainer: {
+        position: "absolute",
+        top: 60,
+        left: 20,
+        backgroundColor: "rgba(0, 0, 0, 0.8)",
+        padding: 12,
+        borderRadius: 8,
+        minWidth: 200,
+    },
+    debugTitle: {
+        color: "#10B981",
         fontSize: 14,
-        marginTop: 4,
-        fontWeight: "500",
+        fontWeight: "600",
+        marginBottom: 8,
+    },
+    debugText: {
+        color: "white",
+        fontSize: 12,
+        marginBottom: 2,
     },
     devModeContainer: {
         position: "absolute",
         top: 140,
         right: 20,
-        backgroundColor: "white", // Heller wie im Player
+        backgroundColor: "white",
         padding: 16,
         borderRadius: 12,
         minWidth: 160,
@@ -407,22 +777,16 @@ const styles = StyleSheet.create({
         borderColor: "#E5E7EB",
     },
     devModeTitle: {
-        color: "#1F2937", // Dunkler Text wie im Player
+        color: "#1F2937",
         fontSize: 16,
         fontWeight: "600",
-        marginBottom: 8,
-        textAlign: "center",
-    },
-    devModeSubtitle: {
-        color: "#6B7280",
-        fontSize: 12,
         marginBottom: 12,
         textAlign: "center",
     },
     devButton: {
-        backgroundColor: "#F3F4F6", // Heller wie im Player
-        padding: 12,
-        borderRadius: 8,
+        backgroundColor: "#F3F4F6",
+        padding: 8,
+        borderRadius: 6,
         marginBottom: 8,
         alignItems: "center",
         borderWidth: 1,
@@ -437,19 +801,24 @@ const styles = StyleSheet.create({
         borderColor: "#FECACA",
     },
     devButtonText: {
-        color: "#1F2937", // Dunkler Text
-        fontSize: 14,
+        color: "#1F2937",
+        fontSize: 12,
         fontWeight: "500",
         textAlign: "center",
     },
-    devToggle: {
+
+    // Floating Action Buttons
+    fabContainer: {
         position: "absolute",
-        bottom: 100,
+        bottom: 30,
         right: 20,
-        backgroundColor: "#6B7280", // Grauer wie im Player
-        width: 50,
-        height: 50,
-        borderRadius: 25,
+        gap: 12,
+    },
+    fab: {
+        backgroundColor: "#1F2937",
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         alignItems: "center",
         justifyContent: "center",
         shadowColor: "#000",
@@ -458,65 +827,213 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 5,
     },
-    sliderContainer: {
-        position: "absolute",
-        bottom: 180,
-        left: 20,
-        right: 20,
-        backgroundColor: "white", // Weiß wie im Player
+    fabSecondary: {
+        backgroundColor: "#6B7280",
+    },
+    fabPrimary: {
+        backgroundColor: "#3B82F6",
+    },
+    fabDev: {
+        backgroundColor: "#8B5CF6",
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+    },
+
+    // Modal Styles
+    modalContainer: {
+        flex: 1,
+        backgroundColor: "#F9FAFB",
+    },
+    modalHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: "#E5E7EB",
+        backgroundColor: "white",
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: "600",
+        color: "#1F2937",
+    },
+    modalContent: {
+        flex: 1,
+        padding: 20,
+    },
+
+    // Empty State
+    emptyState: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        paddingVertical: 60,
+    },
+    emptyStateTitle: {
+        fontSize: 18,
+        fontWeight: "600",
+        color: "#4B5563",
+        marginTop: 16,
+        marginBottom: 8,
+    },
+    emptyStateText: {
+        fontSize: 14,
+        color: "#6B7280",
+        textAlign: "center",
+    },
+
+    // Playlist Cards
+    playlistCard: {
+        flexDirection: "row",
+        backgroundColor: "white",
         padding: 16,
         borderRadius: 12,
+        marginBottom: 12,
+        alignItems: "center",
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 5,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    playlistImage: {
+        width: 60,
+        height: 60,
+        borderRadius: 8,
+    },
+    playlistInfo: {
+        flex: 1,
+        marginLeft: 12,
+    },
+    playlistName: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#1F2937",
+        marginBottom: 4,
+    },
+    playlistSpotify: {
+        fontSize: 14,
+        color: "#3B82F6",
+        marginBottom: 4,
+    },
+    playlistDetails: {
+        fontSize: 12,
+        color: "#6B7280",
+    },
+    playlistActions: {
+        flexDirection: "row",
+        gap: 8,
+    },
+    toggleButton: {
+        backgroundColor: "#6B7280",
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    toggleButtonActive: {
+        backgroundColor: "#10B981",
+    },
+    deleteButton: {
+        backgroundColor: "#DC2626",
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+
+    // Create Modal Styles
+    inputSection: {
+        marginBottom: 24,
+    },
+    inputLabel: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#1F2937",
+        marginBottom: 8,
+    },
+    textInput: {
+        backgroundColor: "white",
+        borderWidth: 1,
+        borderColor: "#E5E7EB",
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        fontSize: 16,
+        color: "#1F2937",
+    },
+    selectedPlaylistCard: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#EBF8FF",
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: "#3B82F6",
+    },
+    selectedPlaylistImage: {
+        width: 40,
+        height: 40,
+        borderRadius: 6,
+        marginRight: 12,
+    },
+    selectedPlaylistName: {
+        fontSize: 14,
+        fontWeight: "600",
+        color: "#1F2937",
+    },
+    spotifyPlaylistList: {
+        maxHeight: 200,
+        backgroundColor: "white",
+        borderRadius: 8,
         borderWidth: 1,
         borderColor: "#E5E7EB",
     },
-    sliderLabel: {
-        marginBottom: 12,
-        fontSize: 16,
-        fontWeight: "600", // Wie im Player
+    spotifyPlaylistItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        padding: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: "#F3F4F6",
+    },
+    spotifyPlaylistItemSelected: {
+        backgroundColor: "#EBF8FF",
+    },
+    spotifyPlaylistImage: {
+        width: 40,
+        height: 40,
+        borderRadius: 6,
+        marginRight: 12,
+    },
+    spotifyPlaylistName: {
+        flex: 1,
+        fontSize: 14,
+        fontWeight: "500",
         color: "#1F2937",
     },
-    buttonRow: {
-        flexDirection: "row",
-        marginTop: 12,
-        gap: 12,
+    spotifyPlaylistTracks: {
+        fontSize: 12,
+        color: "#6B7280",
     },
-    saveButton: {
-        flex: 1,
-        backgroundColor: "#1F2937", // Dunkler wie im Player
-        padding: 12,
+    createButton: {
+        backgroundColor: "#3B82F6",
+        padding: 16,
         borderRadius: 8,
         alignItems: "center",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+        marginTop: 20,
+        marginBottom: 40,
     },
-    stopButton: {
-        flex: 1,
-        backgroundColor: "#DC2626", // Rot bleibt
-        padding: 12,
-        borderRadius: 8,
-        alignItems: "center",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+    createButtonDisabled: {
+        backgroundColor: "#9CA3AF",
     },
-    saveText: {
+    createButtonText: {
         color: "white",
-        fontSize: 14,
-        fontWeight: "600", // Wie im Player
-    },
-    stopText: {
-        color: "white",
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: "600",
     },
 });
