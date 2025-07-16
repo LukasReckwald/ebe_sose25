@@ -45,6 +45,12 @@ export default function SpotifyAuth() {
         discovery
     );
 
+    // Debug: Zeige Redirect URI
+    useEffect(() => {
+        console.log('🔗 SPOTIFY REDIRECT URI:', REDIRECT_URI);
+        Alert.alert('Spotify Redirect URI', `Kopieren Sie diese URI:\n\n${REDIRECT_URI}`);
+    }, []);
+
     useEffect(() => {
         if (!auth.currentUser) {
             router.push('/login');
