@@ -1,9 +1,9 @@
 ﻿import React, { useState, useEffect } from 'react';
 import {
-    View, Text, TouchableOpacity, Alert, StyleSheet, SafeAreaView, ActivityIndicator
+    View, Text, TouchableOpacity, Alert, StyleSheet, SafeAreaView, ActivityIndicator, ScrollView
 } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, FontAwesome } from '@expo/vector-icons';
 import { auth } from '@/firebaseConfig';
 import { router } from 'expo-router';
 import {
@@ -46,13 +46,11 @@ export default function SpotifyAuth() {
     );
 
     useEffect(() => {
-        // Überprüfe Firebase Auth Status
         if (!auth.currentUser) {
             router.push('/login');
             return;
         }
 
-        // Lade gespeicherte Spotify-Tokens und leite bei Erfolg weiter
         loadAndValidateTokens();
     }, []);
 
@@ -63,20 +61,16 @@ export default function SpotifyAuth() {
     }, [response]);
 
     useEffect(() => {
-        // Nach erfolgreichem Token-Load oder OAuth: zur App weiterleiten
         if (tokens) {
             router.replace('/(tabs)/mapview');
         }
     }, [tokens]);
 
-    // Lade und validiere gespeicherte Tokens
     const loadAndValidateTokens = async () => {
         try {
-            // Lade Tokens und refreshe automatisch bei Bedarf
             const validTokens = await getValidSpotifyTokens();
             if (validTokens) {
                 setTokens(validTokens);
-                // Wird automatisch zur App weiterleiten via useEffect
             }
         } catch (error) {
             console.error('Fehler beim Laden der Tokens:', error);
@@ -86,7 +80,6 @@ export default function SpotifyAuth() {
         }
     };
 
-    // Tausche Authorization Code gegen Access Token
     const exchangeCodeForTokens = async (code: string) => {
         setIsConnecting(true);
         setErrorMessage('');
@@ -110,7 +103,6 @@ export default function SpotifyAuth() {
                 expiration,
             };
 
-            // Speichere Tokens mit der Utility-Funktion
             await saveSpotifyTokens(newTokens);
             setTokens(newTokens);
 
@@ -122,7 +114,6 @@ export default function SpotifyAuth() {
         }
     };
 
-    // Logout-Funktion
     const handleLogout = async () => {
         Alert.alert(
             'Abmelden',
@@ -147,155 +138,387 @@ export default function SpotifyAuth() {
         );
     };
 
-    // Neu verbinden
-    const handleReconnect = async () => {
-        setErrorMessage('');
-        promptAsync();
-    };
-
-    // Loading Screen
     if (isLoading) {
         return (
             <SafeAreaView style={styles.center}>
-                <ActivityIndicator size="large" color="#1DB954" />
+                <ActivityIndicator size="large" color="#1F2937" />
                 <Text style={styles.loadingText}>Überprüfe Spotify-Verbindung...</Text>
             </SafeAreaView>
         );
     }
 
-    // Login Screen - wird nur angezeigt wenn keine gültigen Tokens vorhanden
     return (
-        <SafeAreaView style={styles.center}>
-            <View style={styles.loginContainer}>
-                <Ionicons name="logo-spotify" size={80} color="#1DB954" />
-                <Text style={styles.title}>Spotify-Verbindung</Text>
-                <Text style={styles.subtitle}>
-                    Verbinde dein Spotify-Konto, um die Musik-Features zu nutzen
-                </Text>
+        <SafeAreaView style={styles.container}>
+            {/* Header */}
+            <View style={styles.header}>
+                <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={() => router.back()}
+                >
+                    <Ionicons name="chevron-back" size={24} color="#6B7280" />
+                </TouchableOpacity>
+                <Text style={styles.pageTitle}>Spotify Verbindung</Text>
+            </View>
 
+            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                {/* Hero Section */}
+                <View style={styles.heroSection}>
+                    <View style={styles.logoContainer}>
+                        <FontAwesome name="spotify" size={64} color="#1DB954" />
+                    </View>
+                    <Text style={styles.heroTitle}>Verbinde dein Spotify</Text>
+                    <Text style={styles.heroSubtitle}>
+                        Lass Musik automatisch an deinen Lieblingsorten abspielen
+                    </Text>
+                </View>
+
+                {/* Error Message */}
                 {errorMessage && (
-                    <View style={styles.errorContainer}>
-                        <Ionicons name="alert-circle" size={20} color="#ff6b6b" />
+                    <View style={styles.errorCard}>
+                        <Ionicons name="alert-circle" size={20} color="#DC2626" />
                         <Text style={styles.errorText}>{errorMessage}</Text>
                     </View>
                 )}
 
-                <TouchableOpacity
-                    onPress={() => promptAsync()}
-                    style={[styles.loginBtn, isConnecting && styles.loginBtnDisabled]}
-                    disabled={isConnecting}
-                >
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {/* Connect Button */}
+                <View style={styles.connectSection}>
+                    <TouchableOpacity
+                        onPress={() => promptAsync()}
+                        style={[styles.connectButton, isConnecting && styles.connectButtonDisabled]}
+                        disabled={isConnecting}
+                    >
                         {isConnecting ? (
                             <ActivityIndicator size="small" color="white" />
                         ) : (
-                            <Ionicons name="logo-spotify" size={20} color="white" />
+                            <FontAwesome name="spotify" size={20} color="white" />
                         )}
-                        <Text style={[styles.btnText, { marginLeft: 8 }]}>
+                        <Text style={styles.connectButtonText}>
                             {isConnecting ? 'Verbinde...' : 'Mit Spotify verbinden'}
                         </Text>
-                    </View>
-                </TouchableOpacity>
+                    </TouchableOpacity>
 
-                <View style={styles.infoContainer}>
-                    <Text style={styles.infoText}>
-                        Wir benötigen Zugriff auf dein Spotify-Konto für:
+                    <Text style={styles.connectHint}>
+                        Du wirst zu Spotify weitergeleitet um die Verbindung zu autorisieren
                     </Text>
-                    <Text style={styles.infoItem}>• Musik abspielen</Text>
-                    <Text style={styles.infoItem}>• Playlists verwalten</Text>
-                    <Text style={styles.infoItem}>• Songs suchen und hinzufügen</Text>
                 </View>
-            </View>
+
+                {/* Features Section */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>Was wird möglich?</Text>
+                    <View style={styles.featuresContainer}>
+                        <View style={styles.featureCard}>
+                            <View style={styles.featureIcon}>
+                                <Ionicons name="location" size={24} color="#10B981" />
+                            </View>
+                            <Text style={styles.featureTitle}>Geo-Playlisten</Text>
+                            <Text style={styles.featureDescription}>
+                                Erstelle Playlisten die automatisch an bestimmten Orten starten
+                            </Text>
+                        </View>
+
+                        <View style={styles.featureCard}>
+                            <View style={styles.featureIcon}>
+                                <Ionicons name="play-circle" size={24} color="#3B82F6" />
+                            </View>
+                            <Text style={styles.featureTitle}>Automatische Wiedergabe</Text>
+                            <Text style={styles.featureDescription}>
+                                Musik startet automatisch wenn du deine Zonen betrittst
+                            </Text>
+                        </View>
+
+                        <View style={styles.featureCard}>
+                            <View style={styles.featureIcon}>
+                                <Ionicons name="library" size={24} color="#8B5CF6" />
+                            </View>
+                            <Text style={styles.featureTitle}>Playlist-Verwaltung</Text>
+                            <Text style={styles.featureDescription}>
+                                Durchsuche, erstelle und bearbeite deine Spotify-Playlisten
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+
+                {/* Permissions Section */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>Benötigte Berechtigungen</Text>
+                    <View style={styles.permissionsCard}>
+                        <View style={styles.permissionItem}>
+                            <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                            <Text style={styles.permissionText}>Playlisten lesen und verwalten</Text>
+                        </View>
+                        <View style={styles.permissionItem}>
+                            <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                            <Text style={styles.permissionText}>Musik abspielen und steuern</Text>
+                        </View>
+                        <View style={styles.permissionItem}>
+                            <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                            <Text style={styles.permissionText}>Songs suchen und hinzufügen</Text>
+                        </View>
+                        <View style={styles.permissionItem}>
+                            <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                            <Text style={styles.permissionText}>Dein Profil und E-Mail lesen</Text>
+                        </View>
+                    </View>
+                </View>
+
+                {/* Security Note */}
+                <View style={styles.securityNote}>
+                    <Ionicons name="shield-checkmark" size={20} color="#6B7280" />
+                    <View style={styles.securityText}>
+                        <Text style={styles.securityTitle}>Sicher & Privat</Text>
+                        <Text style={styles.securityDescription}>
+                            Deine Spotify-Daten werden sicher gespeichert und nur für die App-Funktionen verwendet
+                        </Text>
+                    </View>
+                </View>
+
+                {/* Bottom Spacing */}
+                <View style={styles.bottomSpacing} />
+            </ScrollView>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
+    // Container & Layout
+    container: {
+        flex: 1,
+        backgroundColor: '#F9FAFB',
+    },
+    content: {
+        flex: 1,
+        paddingHorizontal: 20,
+    },
+
+    // Header
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E7EB',
+        backgroundColor: '#FFFFFF',
+        gap: 16,
+    },
+    backButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#F3F4F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    pageTitle: {
+        fontSize: 20,
+        fontWeight: '600',
+        color: '#1F2937',
+    },
+
+    // Hero Section
+    heroSection: {
+        alignItems: 'center',
+        paddingVertical: 40,
+    },
+    logoContainer: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        backgroundColor: '#FFFFFF',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 24,
+        elevation: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 6,
+    },
+    heroTitle: {
+        fontSize: 28,
+        fontWeight: '700',
+        color: '#1F2937',
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    heroSubtitle: {
+        fontSize: 16,
+        color: '#6B7280',
+        textAlign: 'center',
+        lineHeight: 22,
+        paddingHorizontal: 20,
+    },
+
+    // Connect Section
+    connectSection: {
+        alignItems: 'center',
+        marginBottom: 40,
+    },
+    connectButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#1DB954',
+        paddingVertical: 16,
+        paddingHorizontal: 32,
+        borderRadius: 12,
+        gap: 12,
+        elevation: 5,
+        shadowColor: '#1DB954',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+        minWidth: 250,
+    },
+    connectButtonDisabled: {
+        backgroundColor: '#9CA3AF',
+        elevation: 0,
+        shadowOpacity: 0,
+    },
+    connectButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    connectHint: {
+        fontSize: 12,
+        color: '#9CA3AF',
+        textAlign: 'center',
+        marginTop: 12,
+        paddingHorizontal: 40,
+    },
+
+    // Error Card
+    errorCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FEF2F2',
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 24,
+        gap: 12,
+        borderLeftWidth: 4,
+        borderLeftColor: '#DC2626',
+    },
+    errorText: {
+        color: '#DC2626',
+        fontSize: 14,
+        flex: 1,
+        fontWeight: '500',
+    },
+
+    // Sections
+    section: {
+        marginBottom: 32,
+    },
+    sectionLabel: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 16,
+    },
+
+    // Features
+    featuresContainer: {
+        gap: 16,
+    },
+    featureCard: {
+        backgroundColor: '#FFFFFF',
+        padding: 20,
+        borderRadius: 12,
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+    },
+    featureIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#F3F4F6',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    featureTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 6,
+    },
+    featureDescription: {
+        fontSize: 14,
+        color: '#6B7280',
+        lineHeight: 20,
+    },
+
+    // Permissions
+    permissionsCard: {
+        backgroundColor: '#FFFFFF',
+        padding: 20,
+        borderRadius: 12,
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        gap: 12,
+    },
+    permissionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    permissionText: {
+        fontSize: 14,
+        color: '#4B5563',
+        fontWeight: '500',
+    },
+
+    // Security Note
+    securityNote: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        backgroundColor: '#F0FDF4',
+        padding: 16,
+        borderRadius: 12,
+        gap: 12,
+        borderLeftWidth: 4,
+        borderLeftColor: '#10B981',
+        marginBottom: 20,
+    },
+    securityText: {
+        flex: 1,
+    },
+    securityTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#065F46',
+        marginBottom: 4,
+    },
+    securityDescription: {
+        fontSize: 13,
+        color: '#047857',
+        lineHeight: 18,
+    },
+
+    // Loading & Center
     center: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#000',
-        padding: 20
-    },
-    loginContainer: {
-        alignItems: 'center',
-        maxWidth: 300,
-    },
-    title: {
-        fontSize: 28,
-        color: '#1DB954',
-        marginVertical: 20,
-        textAlign: 'center',
-        fontWeight: 'bold'
-    },
-    subtitle: {
-        fontSize: 16,
-        color: '#fff',
-        marginBottom: 30,
-        textAlign: 'center',
-        lineHeight: 22
+        backgroundColor: '#F9FAFB',
+        padding: 20,
     },
     loadingText: {
         fontSize: 16,
-        color: '#fff',
-        marginTop: 20
+        color: '#6B7280',
+        marginTop: 16,
     },
-    errorContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#2d1b1b',
-        padding: 12,
-        borderRadius: 8,
-        marginBottom: 20,
-        borderLeftWidth: 4,
-        borderLeftColor: '#ff6b6b'
+
+    // Bottom Spacing
+    bottomSpacing: {
+        height: 40,
     },
-    errorText: {
-        color: '#ff6b6b',
-        fontSize: 14,
-        marginLeft: 8,
-        flex: 1
-    },
-    loginBtn: {
-        backgroundColor: '#1DB954',
-        padding: 16,
-        borderRadius: 30,
-        marginVertical: 10,
-        alignItems: 'center',
-        minWidth: 250,
-        shadowColor: '#1DB954',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-        elevation: 5
-    },
-    loginBtnDisabled: {
-        backgroundColor: '#0d4f24'
-    },
-    btnText: {
-        color: '#fff',
-        fontWeight: 'bold',
-        fontSize: 16
-    },
-    infoContainer: {
-        marginTop: 30,
-        padding: 20,
-        backgroundColor: '#1a1a1a',
-        borderRadius: 10,
-        borderLeftWidth: 4,
-        borderLeftColor: '#1DB954'
-    },
-    infoText: {
-        color: '#ccc',
-        fontSize: 14,
-        marginBottom: 10,
-        fontWeight: '600'
-    },
-    infoItem: {
-        color: '#aaa',
-        fontSize: 13,
-        marginVertical: 2,
-        paddingLeft: 10
-    }
 });
