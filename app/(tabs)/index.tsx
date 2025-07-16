@@ -265,17 +265,11 @@ export default function ProfileScreen() {
                     <View style={styles.actionContainer}>
                         {tokens && (
                             <TouchableOpacity style={styles.actionButton} onPress={handleSpotifyDisconnect}>
-                                <FontAwesome name="spotify" size={20} color="#DC2626" />
+                                <FontAwesome name="spotify" size={20} color="#4B5563" />
                                 <Text style={styles.actionButtonText}>Spotify trennen</Text>
                                 <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
                             </TouchableOpacity>
                         )}
-
-                        <TouchableOpacity style={styles.actionButton} onPress={() => router.push('/spotify-auth')}>
-                            <Ionicons name="settings" size={20} color="#6B7280" />
-                            <Text style={styles.actionButtonText}>Spotify Einstellungen</Text>
-                            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-                        </TouchableOpacity>
 
                         <TouchableOpacity style={[styles.actionButton, styles.logoutButton]} onPress={handleLogout}>
                             <Ionicons name="log-out" size={20} color="#DC2626" />
