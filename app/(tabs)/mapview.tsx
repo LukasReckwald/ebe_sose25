@@ -9,12 +9,11 @@ import {
     Modal,
     ScrollView,
     Image,
-    TextInput,
+    TextInput, Linking,
 } from "react-native";
 import MapView, { Marker, Circle } from "react-native-maps";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -22,6 +21,19 @@ import {
     getValidSpotifyTokens,
     spotifyAPICall,
 } from '@/utils/spotifyTokenUtils';
+import { auth } from '@/firebaseConfig';
+import {
+    getFirestore,
+    collection,
+    doc,
+    addDoc,
+    updateDoc,
+    deleteDoc,
+    onSnapshot,
+    query,
+    where,
+    orderBy
+} from 'firebase/firestore';
 
 const GEOFENCE_TASK = "GEOFENCE_TASK";
 
@@ -37,6 +49,8 @@ interface GeoPlaylist {
     spotifyPlaylistName: string;
     spotifyPlaylistImage?: string;
     isActive: boolean;
+    userId: string;
+    createdAt: any;
 }
 
 export default function GeoPlaylistMap() {
@@ -57,14 +71,58 @@ export default function GeoPlaylistMap() {
     const [selectedSpotifyPlaylist, setSelectedSpotifyPlaylist] = useState(null);
     const [activeGeoPlaylists, setActiveGeoPlaylists] = useState<string[]>([]);
     const [lastPlayedPlaylist, setLastPlayedPlaylist] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         initializeApp();
     }, []);
 
+    // Firebase Listener für Geo-Playlists
+    useEffect(() => {
+        if (!auth.currentUser) {
+            setIsLoading(false);
+            return;
+        }
+
+        const userId = auth.currentUser.uid;
+        const db = getFirestore();
+        const geoPlaylistsRef = collection(db, 'geoPlaylists');
+
+        const q = query(
+            geoPlaylistsRef,
+            where('userId', '==', userId)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const playlists: GeoPlaylist[] = [];
+            snapshot.forEach((doc) => {
+                playlists.push({
+                    id: doc.id,
+                    ...doc.data()
+                } as GeoPlaylist);
+            });
+
+            // Sortiere nach createdAt
+            playlists.sort((a, b) => {
+                const aTime = a.createdAt?.toDate?.() || new Date(a.createdAt) || new Date();
+                const bTime = b.createdAt?.toDate?.() || new Date(b.createdAt) || new Date();
+                return bTime.getTime() - aTime.getTime();
+            });
+
+            setGeoPlaylists(playlists);
+            setIsLoading(false);
+        }, (error) => {
+            console.error('Error loading geo-playlists:', error);
+            Alert.alert('Fehler', 'Geo-Playlists konnten nicht geladen werden.');
+            setIsLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [auth.currentUser]);
+
     // Optimiertes Location Tracking für Geo-Playlisten
     useEffect(() => {
-        let interval;
+        let interval: number;
         if (geoPlaylists.length > 0) {
             interval = setInterval(async () => {
                 let currentPos;
@@ -75,19 +133,17 @@ export default function GeoPlaylistMap() {
                     try {
                         const loc = await Location.getCurrentPositionAsync({
                             accuracy: Location.Accuracy.Balanced,
-                            maximumAge: 10000,
-                            timeout: 5000,
+                            maximumAge: 5000,
+                            timeout: 3000,
                         });
                         currentPos = loc.coords;
                     } catch (error) {
-                        console.error("Fehler beim Abrufen der Position:", error);
                         return;
                     }
                 }
 
-                console.log("Current Position:", currentPos);
                 await checkGeoPlaylists(currentPos);
-            }, 5000);
+            }, 2000);
         }
 
         return () => {
@@ -99,7 +155,7 @@ export default function GeoPlaylistMap() {
 
     // Separate Location Updates für Map Display
     useEffect(() => {
-        let watchId;
+        let watchId: { remove: any; };
 
         const startWatching = async () => {
             try {
@@ -119,7 +175,7 @@ export default function GeoPlaylistMap() {
                     }
                 );
             } catch (error) {
-                console.error("Fehler beim Starten des Location Watching:", error);
+                // Ignore location watch errors
             }
         };
 
@@ -133,9 +189,17 @@ export default function GeoPlaylistMap() {
     }, [devMode]);
 
     const initializeApp = async () => {
+        // Check auth first
+        if (!auth.currentUser) {
+            Alert.alert("Fehler", "Bitte melde dich erst an");
+            setIsLoading(false);
+            return;
+        }
+
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
             Alert.alert("Fehler", "Standortberechtigung nicht erteilt");
+            setIsLoading(false);
             return;
         }
 
@@ -145,30 +209,7 @@ export default function GeoPlaylistMap() {
             longitude: loc.coords.longitude,
         });
 
-        await loadGeoPlaylists();
         await loadSpotifyPlaylists();
-        console.log("App initialisiert");
-    };
-
-    const loadGeoPlaylists = async () => {
-        try {
-            const saved = await AsyncStorage.getItem("geoPlaylists");
-            if (saved) {
-                const playlists = JSON.parse(saved);
-                setGeoPlaylists(playlists);
-            }
-        } catch (error) {
-            console.error("Fehler beim Laden der Geo-Playlisten:", error);
-        }
-    };
-
-    const saveGeoPlaylists = async (playlists: GeoPlaylist[]) => {
-        try {
-            await AsyncStorage.setItem("geoPlaylists", JSON.stringify(playlists));
-            setGeoPlaylists(playlists);
-        } catch (error) {
-            console.error("Fehler beim Speichern der Geo-Playlisten:", error);
-        }
     };
 
     const loadSpotifyPlaylists = async () => {
@@ -179,63 +220,46 @@ export default function GeoPlaylistMap() {
                 setSpotifyPlaylists(data.items);
             }
         } catch (error) {
-            console.error("Fehler beim Laden der Spotify-Playlisten:", error);
+            console.error('Error loading Spotify playlists:', error);
         }
     };
 
     const checkGeoPlaylists = async (currentPos: any) => {
-        console.log("Checking geo playlists...", {
-            currentPos,
-            geoPlaylistsCount: geoPlaylists.length,
-            activeCount: geoPlaylists.filter(p => p.isActive).length
-        });
-
         const currentlyActive: string[] = [];
 
         for (const geoPlaylist of geoPlaylists) {
             if (!geoPlaylist.isActive) {
-                console.log(`Skipping inactive playlist: ${geoPlaylist.name}`);
                 continue;
             }
 
             const distance = getDistance(currentPos, geoPlaylist.location);
             const isInZone = distance <= geoPlaylist.radius;
 
-            console.log(`Playlist "${geoPlaylist.name}": distance=${distance.toFixed(0)}m, radius=${geoPlaylist.radius}m, inZone=${isInZone}`);
-
             if (isInZone) {
                 currentlyActive.push(geoPlaylist.id);
 
                 if (!activeGeoPlaylists.includes(geoPlaylist.id) &&
                     lastPlayedPlaylist !== geoPlaylist.id) {
-                    console.log(`Entering zone for playlist: ${geoPlaylist.name}`);
                     await playGeoPlaylist(geoPlaylist);
                     setLastPlayedPlaylist(geoPlaylist.id);
                 }
             }
         }
 
-        console.log("Currently active geo-playlists:", currentlyActive);
         setActiveGeoPlaylists(currentlyActive);
 
         if (currentlyActive.length === 0 && activeGeoPlaylists.length > 0) {
-            console.log("Left all zones, resetting lastPlayedPlaylist");
             setLastPlayedPlaylist(null);
         }
     };
 
     const playGeoPlaylist = async (geoPlaylist: GeoPlaylist) => {
-        console.log(`Attempting to play geo-playlist: ${geoPlaylist.name}`);
-
         try {
             const tokens = await getValidSpotifyTokens();
             if (!tokens) {
-                console.error("No valid Spotify tokens found");
                 Alert.alert("Spotify nicht verbunden", "Bitte verbinde dich mit Spotify um Geo-Playlisten zu nutzen.");
                 return;
             }
-
-            console.log("Playing playlist:", geoPlaylist.spotifyPlaylistId);
 
             await spotifyAPICall('/me/player/play', {
                 method: 'PUT',
@@ -244,19 +268,14 @@ export default function GeoPlaylistMap() {
                 }),
             });
 
-            console.log("Playlist started successfully");
-
             Alert.alert(
                 "🎵 Geo-Playlist gestartet!",
                 `"${geoPlaylist.spotifyPlaylistName}" wird jetzt gespielt`,
                 [{ text: "Cool!", style: "default" }]
             );
         } catch (error) {
-            console.error("Fehler beim Abspielen der Geo-Playlist:", error);
-
             try {
                 const devices = await spotifyAPICall('/me/player/devices');
-                console.log("Available devices:", devices.devices.length);
 
                 if (devices.devices.length === 0) {
                     Alert.alert(
@@ -270,12 +289,11 @@ export default function GeoPlaylistMap() {
                 } else {
                     Alert.alert(
                         "🎵 Geo-Playlist gestartet!",
-                        `"${geoPlaylist.spotifyPlaylistName}" sollte jetzt spielen (trotz API-Warnung)`,
+                        `"${geoPlaylist.spotifyPlaylistName}" sollte jetzt spielen`,
                         [{ text: "OK" }]
                     );
                 }
             } catch (deviceError) {
-                console.error("Device check failed:", deviceError);
                 Alert.alert("Geo-Playlist", `Playlist "${geoPlaylist.spotifyPlaylistName}" ist bereit, aber Spotify ist nicht verfügbar.`);
             }
         }
@@ -287,36 +305,56 @@ export default function GeoPlaylistMap() {
             return;
         }
 
-        const newGeoPlaylist: GeoPlaylist = {
-            id: Date.now().toString(),
-            name: newPlaylistName.trim(),
-            location: selectedLocation,
-            radius: radius,
-            spotifyPlaylistId: selectedSpotifyPlaylist.id,
-            spotifyPlaylistName: selectedSpotifyPlaylist.name,
-            spotifyPlaylistImage: selectedSpotifyPlaylist.images?.[0]?.url,
-            isActive: true,
-        };
+        if (!auth.currentUser) {
+            Alert.alert("Fehler", "Du musst angemeldet sein");
+            return;
+        }
 
-        const updatedPlaylists = [...geoPlaylists, newGeoPlaylist];
-        await saveGeoPlaylists(updatedPlaylists);
+        try {
+            const db = getFirestore(); // Konsistente Verwendung
 
-        setShowCreateModal(false);
-        setSelectedLocation(null);
-        setNewPlaylistName("");
-        setSelectedSpotifyPlaylist(null);
-        setMapMode("normal");
+            const newGeoPlaylist = {
+                name: newPlaylistName.trim(),
+                location: selectedLocation,
+                radius: radius,
+                spotifyPlaylistId: selectedSpotifyPlaylist.id,
+                spotifyPlaylistName: selectedSpotifyPlaylist.name,
+                spotifyPlaylistImage: selectedSpotifyPlaylist.images?.[0]?.url,
+                isActive: true,
+                userId: auth.currentUser.uid,
+                createdAt: new Date(),
+            };
 
-        Alert.alert("Erfolg!", `Geo-Playlist "${newGeoPlaylist.name}" wurde erstellt!`);
+            // Add to Firebase
+            const docRef = await addDoc(collection(db, 'geoPlaylists'), newGeoPlaylist);
+
+            setShowCreateModal(false);
+            setSelectedLocation(null);
+            setNewPlaylistName("");
+            setSelectedSpotifyPlaylist(null);
+            setMapMode("normal");
+
+            Alert.alert("Erfolg!", `Geo-Playlist "${newGeoPlaylist.name}" wurde erstellt!`);
+        } catch (error) {
+            console.error('Error creating geo-playlist:', error);
+            Alert.alert("Fehler", "Geo-Playlist konnte nicht erstellt werden.");
+        }
     };
 
     const toggleGeoPlaylist = async (id: string) => {
-        const updatedPlaylists = geoPlaylists.map(playlist =>
-            playlist.id === id
-                ? { ...playlist, isActive: !playlist.isActive }
-                : playlist
-        );
-        await saveGeoPlaylists(updatedPlaylists);
+        try {
+            const db = getFirestore(); // Konsistente Verwendung
+            const playlist = geoPlaylists.find(p => p.id === id);
+            if (!playlist) return;
+
+            const docRef = doc(db, 'geoPlaylists', id);
+            await updateDoc(docRef, {
+                isActive: !playlist.isActive
+            });
+        } catch (error) {
+            console.error('Error toggling geo-playlist:', error);
+            Alert.alert("Fehler", "Status konnte nicht geändert werden.");
+        }
     };
 
     const deleteGeoPlaylist = async (id: string) => {
@@ -329,8 +367,14 @@ export default function GeoPlaylistMap() {
                     text: "Löschen",
                     style: "destructive",
                     onPress: async () => {
-                        const updatedPlaylists = geoPlaylists.filter(p => p.id !== id);
-                        await saveGeoPlaylists(updatedPlaylists);
+                        try {
+                            const db = getFirestore(); // Konsistente Verwendung
+                            await deleteDoc(doc(db, 'geoPlaylists', id));
+                            console.log('Geo-playlist deleted:', id);
+                        } catch (error) {
+                            console.error('Error deleting geo-playlist:', error);
+                            Alert.alert("Fehler", "Geo-Playlist konnte nicht gelöscht werden.");
+                        }
                     }
                 }
             ]
@@ -362,11 +406,32 @@ export default function GeoPlaylistMap() {
         return R * c;
     };
 
+    if (isLoading) {
+        return (
+            <View style={[styles.container, styles.center]}>
+                <ActivityIndicator size="large" color="#1F2937" />
+                <Text style={styles.loadingText}>Lade Geo-Playlists...</Text>
+            </View>
+        );
+    }
+
     if (!location) {
         return (
             <View style={[styles.container, styles.center]}>
                 <ActivityIndicator size="large" color="#1F2937" />
                 <Text style={styles.loadingText}>Lade Standort...</Text>
+            </View>
+        );
+    }
+
+    if (!auth.currentUser) {
+        return (
+            <View style={[styles.container, styles.center]}>
+                <Ionicons name="person-outline" size={60} color="#9CA3AF" />
+                <Text style={styles.errorTitle}>Nicht angemeldet</Text>
+                <Text style={styles.errorText}>
+                    Bitte melde dich an, um Geo-Playlists zu nutzen.
+                </Text>
             </View>
         );
     }
@@ -377,6 +442,7 @@ export default function GeoPlaylistMap() {
                 ref={mapRef}
                 style={styles.map}
                 showsUserLocation={!devMode}
+                showsMyLocationButton={false}
                 initialRegion={{ ...location, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
                 onPress={(e) => {
                     if (mapMode === "select-location") {
@@ -528,22 +594,22 @@ export default function GeoPlaylistMap() {
                 >
                     <Ionicons name="add" size={24} color="white" />
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.fab, styles.fabDev]}
-                    onPress={() => {
-                        setDevMode(!devMode);
-                        if (!devMode) {
-                            Alert.alert("Dev-Mode aktiviert", "Du kannst jetzt deine Position faken!");
-                        } else {
-                            setFakeLocation(null);
-                            Alert.alert("Dev-Mode deaktiviert");
-                        }
-                    }}
-                >
-                    <Ionicons name={devMode ? "code" : "code-outline"} size={20} color="white" />
-                </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+                style={[styles.fab, styles.fabDevLeft]}
+                onPress={() => {
+                    setDevMode(!devMode);
+                    if (!devMode) {
+                        Alert.alert("Dev-Mode aktiviert", "Du kannst jetzt deine Position faken!");
+                    } else {
+                        setFakeLocation(null);
+                        Alert.alert("Dev-Mode deaktiviert");
+                    }
+                }}
+            >
+                <Ionicons name={devMode ? "code" : "code-outline"} size={20} color="white" />
+            </TouchableOpacity>
 
             <Modal visible={showPlaylistModal} animationType="slide" presentationStyle="pageSheet">
                 <SafeAreaView style={styles.modalContainer}>
@@ -692,7 +758,6 @@ export default function GeoPlaylistMap() {
 // Task Manager für Background-Tracking
 TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }) => {
     if (error) {
-        console.error("Geofence Task Error:", error);
         return;
     }
 
@@ -700,7 +765,6 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }) => {
     const currentLocation = locations?.[0]?.coords;
     if (!currentLocation) return;
 
-    console.log("Background Position Update:", currentLocation);
 });
 
 const styles = StyleSheet.create({
@@ -716,6 +780,19 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: "#6B7280",
         marginTop: 16,
+    },
+    errorTitle: {
+        fontSize: 20,
+        color: "#DC2626",
+        marginVertical: 15,
+        fontWeight: '600',
+    },
+    errorText: {
+        fontSize: 16,
+        color: "#6B7280",
+        textAlign: 'center',
+        marginBottom: 20,
+        lineHeight: 22,
     },
     map: {
         flex: 1,
@@ -810,7 +887,7 @@ const styles = StyleSheet.create({
     // Floating Action Buttons
     fabContainer: {
         position: "absolute",
-        bottom: 30,
+        bottom: 80,
         right: 20,
         gap: 12,
     },
@@ -833,11 +910,21 @@ const styles = StyleSheet.create({
     fabPrimary: {
         backgroundColor: "#3B82F6",
     },
-    fabDev: {
+    fabDevLeft: {
+        position: "absolute",
+        bottom: 80,
+        left: 20,
         backgroundColor: "#8B5CF6",
         width: 48,
         height: 48,
         borderRadius: 24,
+        alignItems: "center",
+        justifyContent: "center",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 5,
     },
 
     // Modal Styles
