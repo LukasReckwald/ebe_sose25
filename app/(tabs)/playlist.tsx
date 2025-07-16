@@ -1,8 +1,9 @@
 ﻿import React, { useState, useEffect } from 'react';
 import {
     View, Text, TextInput, Image, TouchableOpacity, ScrollView,
-    Alert, StyleSheet, SafeAreaView, ActivityIndicator
+    Alert, StyleSheet, ActivityIndicator
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '@/firebaseConfig';
@@ -319,30 +320,15 @@ export default function PlaylistScreen() {
             </View>
 
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                {/* User Profile Card */}
-                {userProfile && (
-                    <View style={styles.profileCard}>
-                        <Image source={{ uri: userProfile.images?.[0]?.url }} style={styles.profileImage} />
-                        <View style={styles.profileInfo}>
-                            <Text style={styles.profileName}>{userProfile.display_name}</Text>
-                            <Text style={styles.profileEmail}>{userProfile.email}</Text>
-                        </View>
-                        <View style={styles.spotifyBadge}>
-                            <Ionicons name="logo-spotify" size={16} color="#1DB954" />
-                            <Text style={styles.badgeText}>Connected</Text>
-                        </View>
-                    </View>
-                )}
-
-                {/* Search Section */}
+                {/* Musik suchen */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>Search Music</Text>
+                    <Text style={styles.sectionLabel}>Musik suchen</Text>
                     <View style={styles.searchContainer}>
                         <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
                         <TextInput
                             value={searchQuery}
                             onChangeText={setSearchQuery}
-                            placeholder="Search for songs..."
+                            placeholder="Nach Songs suchen..."
                             style={styles.searchInput}
                             placeholderTextColor="#9CA3AF"
                             onSubmitEditing={searchTracks}
@@ -354,7 +340,7 @@ export default function PlaylistScreen() {
                         )}
                     </View>
 
-                    {/* Search Results */}
+                    {/* Suchergebnisse */}
                     {searchResults.length > 0 && (
                         <View style={styles.searchResults}>
                             {searchResults.map((item: any) => (
@@ -379,14 +365,14 @@ export default function PlaylistScreen() {
                     )}
                 </View>
 
-                {/* Create Playlist Section */}
+                {/* Playlist erstellen */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>Create Playlist</Text>
+                    <Text style={styles.sectionLabel}>Playlist erstellen</Text>
                     <View style={styles.inputGroup}>
                         <TextInput
                             value={newPlaylistName}
                             onChangeText={setNewPlaylistName}
-                            placeholder="Playlist name..."
+                            placeholder="Playlist-Name..."
                             style={styles.textInput}
                             placeholderTextColor="#9CA3AF"
                         />
@@ -396,14 +382,14 @@ export default function PlaylistScreen() {
                             disabled={!newPlaylistName.trim()}
                         >
                             <Ionicons name="add" size={16} color="white" />
-                            <Text style={styles.buttonText}>Create</Text>
+                            <Text style={styles.buttonText}>Erstellen</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
 
-                {/* Horizontal Playlists ScrollView */}
+                {/* Deine Playlists */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>Your Playlists</Text>
+                    <Text style={styles.sectionLabel}>Deine Playlists</Text>
                     <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
@@ -430,7 +416,7 @@ export default function PlaylistScreen() {
                                         {playlist.name}
                                     </Text>
                                     <Text style={styles.playlistMeta}>
-                                        {playlist.tracks.total} songs
+                                        {playlist.tracks.total} Songs
                                     </Text>
                                 </View>
                             </TouchableOpacity>
@@ -438,7 +424,7 @@ export default function PlaylistScreen() {
                     </ScrollView>
                 </View>
 
-                {/* Selected Playlist Details */}
+                {/* Ausgewählte Playlist Details */}
                 {selectedPlaylist && (
                     <View style={styles.section}>
                         <View style={styles.playlistHeader}>
@@ -449,21 +435,21 @@ export default function PlaylistScreen() {
                             <View style={styles.selectedInfo}>
                                 <Text style={styles.selectedTitle}>{selectedPlaylist.name}</Text>
                                 <Text style={styles.selectedMeta}>
-                                    {selectedPlaylist.tracks.total} songs • {selectedPlaylist.owner.display_name}
+                                    {selectedPlaylist.tracks.total} Songs • {selectedPlaylist.owner.display_name}
                                 </Text>
                                 <TouchableOpacity
                                     onPress={() => playPlaylist(selectedPlaylist.id)}
                                     style={styles.playButton}
                                 >
                                     <Ionicons name="play" size={14} color="white" />
-                                    <Text style={styles.playButtonText}>Play</Text>
+                                    <Text style={styles.playButtonText}>Abspielen</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
 
-                        {/* Track List */}
+                        {/* Song-Liste - ALLE Songs anzeigen */}
                         <View style={styles.trackList}>
-                            {playlistTracks.slice(0, 10).map(({ track }: any, index: number) => (
+                            {playlistTracks.map(({ track }: any, index: number) => (
                                 <TouchableOpacity
                                     key={`${track.id}-${index}`}
                                     style={styles.trackRow}
@@ -482,19 +468,12 @@ export default function PlaylistScreen() {
                                     </TouchableOpacity>
                                 </TouchableOpacity>
                             ))}
-                            {playlistTracks.length > 10 && (
-                                <View style={styles.moreTracksIndicator}>
-                                    <Text style={styles.moreTracksText}>
-                                        +{playlistTracks.length - 10} more songs
-                                    </Text>
-                                </View>
-                            )}
                         </View>
                     </View>
                 )}
 
-                {/* Bottom Spacing für Now Playing Bar */}
-                <View style={{ height: currentTrack ? 200 : 30 }} />
+                {/* Bottom Spacing für TabBar und Now Playing Bar */}
+                <View style={styles.bottomSpacing} />
             </ScrollView>
 
             {/* Now Playing Bar */}
@@ -529,9 +508,10 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
         paddingHorizontal: 20,
+        paddingTop: 24,
     },
 
-    // Header - Vereinfacht ohne Buttons
+    // Header
     header: {
         paddingHorizontal: 20,
         paddingVertical: 16,
@@ -544,54 +524,6 @@ const styles = StyleSheet.create({
         fontSize: 24,
         fontWeight: '600',
         color: '#4B5563',
-    },
-
-    // Profile Card
-    profileCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#FFFFFF',
-        padding: 16,
-        borderRadius: 12,
-        marginVertical: 16,
-        elevation: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-    },
-    profileImage: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-    },
-    profileInfo: {
-        flex: 1,
-        marginLeft: 12,
-    },
-    profileName: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#4B5563',
-        marginBottom: 2,
-    },
-    profileEmail: {
-        fontSize: 14,
-        color: '#6B7280',
-    },
-    spotifyBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#34D399',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 6,
-        gap: 4,
-    },
-    badgeText: {
-        fontSize: 12,
-        color: 'white',
-        fontWeight: '500',
     },
 
     // Sections
@@ -846,23 +778,19 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    moreTracksIndicator: {
-        padding: 16,
-        alignItems: 'center',
-        backgroundColor: '#F9FAFB',
-    },
-    moreTracksText: {
-        fontSize: 12,
-        color: '#6B7280',
-        fontStyle: 'italic',
+
+    // Bottom Spacing - Konsistenter Abstand für TabBar
+    bottomSpacing: {
+        height: 120, // Genug Platz für TabBar + zusätzlicher Abstand
+        marginBottom: 20,
     },
 
-    // Now Playing Bar - Verbessert
+    // Now Playing Bar
     nowPlayingBar: {
         position: 'absolute',
         left: 20,
         right: 20,
-        bottom: 70,
+        bottom: 80, // Über der TabBar positioniert
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#FFFFFF',
