@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useState, useRef } from "react";
+﻿// GeoPlaylistMap.tsx - Aktualisierte Version mit neuen Features
+import React, { useEffect, useState, useRef } from "react";
 import {
     StyleSheet,
     View,
@@ -9,24 +10,23 @@ import {
     Modal,
     ScrollView,
     Image,
-    TextInput, Linking,
+    TextInput,
+    Linking,
 } from "react-native";
 import MapView, { Marker, Circle } from "react-native-maps";
 import * as Location from "expo-location";
-import * as TaskManager from "expo-task-manager";
 import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
     getValidSpotifyTokens,
     spotifyAPICall,
-} from '@/utils/spotifyTokenUtils';
+} from '@/utils/spotifyToken';
 import { auth } from '@/firebaseConfig';
 import {
     getFirestore,
     collection,
     doc,
-    addDoc,
     updateDoc,
     deleteDoc,
     onSnapshot,
@@ -35,7 +35,10 @@ import {
     orderBy
 } from 'firebase/firestore';
 
-const GEOFENCE_TASK = "GEOFENCE_TASK";
+// Importiere die neuen Komponenten
+import { GeoPlaylistManager } from '@/components/GeoPlaylistManager';
+import { CreateGeoPlaylistModal } from '@/components/CreateGeoPlaylistModal';
+import { InvitationSystem } from '@/components/InvitationSystem';
 
 interface GeoPlaylist {
     id: string;
@@ -43,14 +46,17 @@ interface GeoPlaylist {
     location: {
         latitude: number;
         longitude: number;
-    };
+    } | null;
     radius: number;
     spotifyPlaylistId: string;
     spotifyPlaylistName: string;
-    spotifyPlaylistImage?: string;
+    spotifyPlaylistImage?: string; // Optional field
     isActive: boolean;
     userId: string;
     createdAt: any;
+    sharedWith?: string[];
+    isShared?: boolean;
+    originalOwnerId?: string;
 }
 
 export default function GeoPlaylistMap() {
@@ -59,7 +65,7 @@ export default function GeoPlaylistMap() {
     const [radius, setRadius] = useState(100);
     const [devMode, setDevMode] = useState(false);
     const [fakeLocation, setFakeLocation] = useState(null);
-    const [mapMode, setMapMode] = useState("normal"); // "normal", "fake-position", "select-location"
+    const [mapMode, setMapMode] = useState("normal");
     const mapRef = useRef(null);
 
     // Playlist-bezogene States
@@ -67,11 +73,12 @@ export default function GeoPlaylistMap() {
     const [spotifyPlaylists, setSpotifyPlaylists] = useState<any[]>([]);
     const [showPlaylistModal, setShowPlaylistModal] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
-    const [newPlaylistName, setNewPlaylistName] = useState("");
-    const [selectedSpotifyPlaylist, setSelectedSpotifyPlaylist] = useState(null);
+    const [showInvitationModal, setShowInvitationModal] = useState(false);
     const [activeGeoPlaylists, setActiveGeoPlaylists] = useState<string[]>([]);
     const [lastPlayedPlaylist, setLastPlayedPlaylist] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [currentTrack, setCurrentTrack] = useState<any>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
 
     useEffect(() => {
         initializeApp();
@@ -119,6 +126,22 @@ export default function GeoPlaylistMap() {
 
         return () => unsubscribe();
     }, [auth.currentUser]);
+
+    // Current Track Polling
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            try {
+                const data = await spotifyAPICall('/me/player');
+                setCurrentTrack(data?.item || null);
+                setIsPlaying(data?.is_playing || false);
+            } catch (error) {
+                setCurrentTrack(null);
+                setIsPlaying(false);
+            }
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, []);
 
     // Optimiertes Location Tracking für Geo-Playlisten
     useEffect(() => {
@@ -228,7 +251,7 @@ export default function GeoPlaylistMap() {
         const currentlyActive: string[] = [];
 
         for (const geoPlaylist of geoPlaylists) {
-            if (!geoPlaylist.isActive) {
+            if (!geoPlaylist.isActive || !geoPlaylist.location) {
                 continue;
             }
 
@@ -299,53 +322,38 @@ export default function GeoPlaylistMap() {
         }
     };
 
-    const createGeoPlaylist = async () => {
-        if (!selectedLocation || !selectedSpotifyPlaylist || !newPlaylistName.trim()) {
-            Alert.alert("Fehler", "Bitte alle Felder ausfüllen");
-            return;
-        }
-
-        if (!auth.currentUser) {
-            Alert.alert("Fehler", "Du musst angemeldet sein");
-            return;
-        }
-
-        try {
-            const db = getFirestore(); // Konsistente Verwendung
-
-            const newGeoPlaylist = {
-                name: newPlaylistName.trim(),
-                location: selectedLocation,
-                radius: radius,
-                spotifyPlaylistId: selectedSpotifyPlaylist.id,
-                spotifyPlaylistName: selectedSpotifyPlaylist.name,
-                spotifyPlaylistImage: selectedSpotifyPlaylist.images?.[0]?.url,
-                isActive: true,
-                userId: auth.currentUser.uid,
-                createdAt: new Date(),
-            };
-
-            // Add to Firebase
-            const docRef = await addDoc(collection(db, 'geoPlaylists'), newGeoPlaylist);
-
-            setShowCreateModal(false);
-            setSelectedLocation(null);
-            setNewPlaylistName("");
-            setSelectedSpotifyPlaylist(null);
-            setMapMode("normal");
-
-            Alert.alert("Erfolg!", `Geo-Playlist "${newGeoPlaylist.name}" wurde erstellt!`);
-        } catch (error) {
-            console.error('Error creating geo-playlist:', error);
-            Alert.alert("Fehler", "Geo-Playlist konnte nicht erstellt werden.");
-        }
-    };
-
     const toggleGeoPlaylist = async (id: string) => {
         try {
-            const db = getFirestore(); // Konsistente Verwendung
+            const db = getFirestore();
             const playlist = geoPlaylists.find(p => p.id === id);
             if (!playlist) return;
+
+            // Für geteilte Playlisten ohne Location, frage nach Standort
+            if (playlist.isShared && !playlist.location) {
+                if (!location) {
+                    Alert.alert("Standort erforderlich", "Bitte warte bis dein Standort geladen wurde.");
+                    return;
+                }
+
+                Alert.alert(
+                    "Standort festlegen",
+                    "Diese geteilte Playlist hat noch keinen Standort. Möchtest du deinen aktuellen Standort verwenden?",
+                    [
+                        { text: "Abbrechen", style: "cancel" },
+                        {
+                            text: "Ja, verwenden",
+                            onPress: async () => {
+                                const docRef = doc(db, 'geoPlaylists', id);
+                                await updateDoc(docRef, {
+                                    location: location,
+                                    isActive: true
+                                });
+                            }
+                        }
+                    ]
+                );
+                return;
+            }
 
             const docRef = doc(db, 'geoPlaylists', id);
             await updateDoc(docRef, {
@@ -368,7 +376,7 @@ export default function GeoPlaylistMap() {
                     style: "destructive",
                     onPress: async () => {
                         try {
-                            const db = getFirestore(); // Konsistente Verwendung
+                            const db = getFirestore();
                             await deleteDoc(doc(db, 'geoPlaylists', id));
                             console.log('Geo-playlist deleted:', id);
                         } catch (error) {
@@ -406,6 +414,17 @@ export default function GeoPlaylistMap() {
         return R * c;
     };
 
+    const handleCreateModalClose = () => {
+        setShowCreateModal(false);
+        setSelectedLocation(null);
+        setMapMode("normal");
+    };
+
+    const handleGeoPlaylistCreated = () => {
+        // Reload playlists wird automatisch durch Firebase listener gemacht
+        loadSpotifyPlaylists(); // Reload für neue Spotify playlists
+    };
+
     if (isLoading) {
         return (
             <View style={[styles.container, styles.center]}>
@@ -430,7 +449,7 @@ export default function GeoPlaylistMap() {
                 <Ionicons name="person-outline" size={60} color="#9CA3AF" />
                 <Text style={styles.errorTitle}>Nicht angemeldet</Text>
                 <Text style={styles.errorText}>
-                    Bitte melde dich an, um Geo-Playlists zu nutzen.
+                    Bitte melde dich an, um Geo-Playlisten zu nutzen.
                 </Text>
             </View>
         );
@@ -457,30 +476,34 @@ export default function GeoPlaylistMap() {
             >
                 {geoPlaylists.map((geoPlaylist) => (
                     <React.Fragment key={geoPlaylist.id}>
-                        <Marker
-                            coordinate={geoPlaylist.location}
-                            title={geoPlaylist.name}
-                            description={geoPlaylist.spotifyPlaylistName}
-                            pinColor={geoPlaylist.isActive ? "#10B981" : "#6B7280"}
-                        />
-                        <Circle
-                            center={geoPlaylist.location}
-                            radius={geoPlaylist.radius}
-                            strokeColor={
-                                activeGeoPlaylists.includes(geoPlaylist.id)
-                                    ? "rgba(16, 185, 129, 0.8)"
-                                    : geoPlaylist.isActive
-                                        ? "rgba(59, 130, 246, 0.8)"
-                                        : "rgba(107, 114, 128, 0.5)"
-                            }
-                            fillColor={
-                                activeGeoPlaylists.includes(geoPlaylist.id)
-                                    ? "rgba(16, 185, 129, 0.2)"
-                                    : geoPlaylist.isActive
-                                        ? "rgba(59, 130, 246, 0.2)"
-                                        : "rgba(107, 114, 128, 0.1)"
-                            }
-                        />
+                        {geoPlaylist.location && (
+                            <>
+                                <Marker
+                                    coordinate={geoPlaylist.location}
+                                    title={geoPlaylist.name}
+                                    description={geoPlaylist.spotifyPlaylistName}
+                                    pinColor={geoPlaylist.isActive ? "#10B981" : "#6B7280"}
+                                />
+                                <Circle
+                                    center={geoPlaylist.location}
+                                    radius={geoPlaylist.radius}
+                                    strokeColor={
+                                        activeGeoPlaylists.includes(geoPlaylist.id)
+                                            ? "rgba(16, 185, 129, 0.8)"
+                                            : geoPlaylist.isActive
+                                                ? "rgba(59, 130, 246, 0.8)"
+                                                : "rgba(107, 114, 128, 0.5)"
+                                    }
+                                    fillColor={
+                                        activeGeoPlaylists.includes(geoPlaylist.id)
+                                            ? "rgba(16, 185, 129, 0.2)"
+                                            : geoPlaylist.isActive
+                                                ? "rgba(59, 130, 246, 0.2)"
+                                                : "rgba(107, 114, 128, 0.1)"
+                                    }
+                                />
+                            </>
+                        )}
                     </React.Fragment>
                 ))}
 
@@ -506,6 +529,7 @@ export default function GeoPlaylistMap() {
                 )}
             </MapView>
 
+            {/* Status Banner für aktive Playlisten */}
             {activeGeoPlaylists.length > 0 && (
                 <View style={styles.statusBanner}>
                     <Text style={styles.statusText}>
@@ -514,6 +538,23 @@ export default function GeoPlaylistMap() {
                 </View>
             )}
 
+            {/* Current Track Banner */}
+            {currentTrack && activeGeoPlaylists.length > 0 && (
+                <View style={styles.currentTrackBanner}>
+                    <Image source={{ uri: currentTrack.album.images[0]?.url }} style={styles.currentTrackImage} />
+                    <View style={styles.currentTrackInfo}>
+                        <Text style={styles.currentTrackTitle} numberOfLines={1}>{currentTrack.name}</Text>
+                        <Text style={styles.currentTrackArtist} numberOfLines={1}>
+                            {currentTrack.artists.map((a: any) => a.name).join(', ')}
+                        </Text>
+                    </View>
+                    <TouchableOpacity style={styles.currentTrackButton}>
+                        <Ionicons name={isPlaying ? "pause" : "play"} size={16} color="white" />
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {/* Debug Info */}
             {devMode && (
                 <View style={styles.debugContainer}>
                     <Text style={styles.debugTitle}>🐛 Debug Info</Text>
@@ -522,12 +563,15 @@ export default function GeoPlaylistMap() {
                     <Text style={styles.debugText}>
                         Position: {fakeLocation ? "Fake" : "Real"}
                     </Text>
+                    <Text style={styles.debugText}>
+                        Current Track: {currentTrack ? "Yes" : "No"}
+                    </Text>
                     {geoPlaylists.length > 0 && (
                         <>
                             <Text style={styles.debugText}>Nächste Playlist:</Text>
                             {geoPlaylists.slice(0, 1).map(playlist => {
                                 const currentPos = fakeLocation || location;
-                                const distance = currentPos ? getDistance(currentPos, playlist.location) : 0;
+                                const distance = currentPos && playlist.location ? getDistance(currentPos, playlist.location) : 0;
                                 return (
                                     <Text key={playlist.id} style={styles.debugText}>
                                         "{playlist.name}": {distance.toFixed(0)}m
@@ -539,6 +583,7 @@ export default function GeoPlaylistMap() {
                 </View>
             )}
 
+            {/* Dev Mode Controls */}
             {devMode && (
                 <View style={styles.devModeContainer}>
                     <Text style={styles.devModeTitle}>🛠️ Dev-Mode</Text>
@@ -573,9 +618,17 @@ export default function GeoPlaylistMap() {
                 </View>
             )}
 
+            {/* Floating Action Buttons */}
             <View style={styles.fabContainer}>
                 <TouchableOpacity style={styles.fab} onPress={centerMap}>
                     <Ionicons name="locate" size={24} color="white" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.fab, styles.fabSecondary]}
+                    onPress={() => setShowInvitationModal(true)}
+                >
+                    <Ionicons name="mail" size={24} color="white" />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -596,12 +649,13 @@ export default function GeoPlaylistMap() {
                 </TouchableOpacity>
             </View>
 
+            {/* Dev Mode Toggle */}
             <TouchableOpacity
                 style={[styles.fab, styles.fabDevLeft]}
                 onPress={() => {
                     setDevMode(!devMode);
                     if (!devMode) {
-                        Alert.alert("Dev-Mode aktiviert", "Du kannst jetzt deine Position faken!");
+                        Alert.alert("Dev-Mode aktiviert", "Du kannst jetzt deine Position faken und Debug-Infos sehen!");
                     } else {
                         setFakeLocation(null);
                         Alert.alert("Dev-Mode deaktiviert");
@@ -611,161 +665,34 @@ export default function GeoPlaylistMap() {
                 <Ionicons name={devMode ? "code" : "code-outline"} size={20} color="white" />
             </TouchableOpacity>
 
-            <Modal visible={showPlaylistModal} animationType="slide" presentationStyle="pageSheet">
-                <SafeAreaView style={styles.modalContainer}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Geo-Playlisten</Text>
-                        <TouchableOpacity onPress={() => setShowPlaylistModal(false)}>
-                            <Ionicons name="close" size={24} color="#6B7280" />
-                        </TouchableOpacity>
-                    </View>
+            {/* Modals */}
+            <GeoPlaylistManager
+                visible={showPlaylistModal}
+                onClose={() => setShowPlaylistModal(false)}
+                geoPlaylists={geoPlaylists}
+                onToggle={toggleGeoPlaylist}
+                onDelete={deleteGeoPlaylist}
+                currentTrack={currentTrack}
+                activeGeoPlaylists={activeGeoPlaylists}
+            />
 
-                    <ScrollView style={styles.modalContent}>
-                        {geoPlaylists.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <Ionicons name="musical-notes-outline" size={64} color="#9CA3AF" />
-                                <Text style={styles.emptyStateTitle}>Keine Geo-Playlisten</Text>
-                                <Text style={styles.emptyStateText}>Erstelle deine erste Geo-Playlist!</Text>
-                            </View>
-                        ) : (
-                            geoPlaylists.map((playlist) => (
-                                <View key={playlist.id} style={styles.playlistCard}>
-                                    <Image
-                                        source={{ uri: playlist.spotifyPlaylistImage || 'https://via.placeholder.com/60' }}
-                                        style={styles.playlistImage}
-                                    />
-                                    <View style={styles.playlistInfo}>
-                                        <Text style={styles.playlistName}>{playlist.name}</Text>
-                                        <Text style={styles.playlistSpotify}>{playlist.spotifyPlaylistName}</Text>
-                                        <Text style={styles.playlistDetails}>
-                                            Radius: {playlist.radius}m • {playlist.isActive ? 'Aktiv' : 'Inaktiv'}
-                                        </Text>
-                                    </View>
-                                    <View style={styles.playlistActions}>
-                                        <TouchableOpacity
-                                            style={[styles.toggleButton, playlist.isActive && styles.toggleButtonActive]}
-                                            onPress={() => toggleGeoPlaylist(playlist.id)}
-                                        >
-                                            <Ionicons
-                                                name={playlist.isActive ? "pause" : "play"}
-                                                size={16}
-                                                color="white"
-                                            />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={styles.deleteButton}
-                                            onPress={() => deleteGeoPlaylist(playlist.id)}
-                                        >
-                                            <Ionicons name="trash" size={16} color="white" />
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                            ))
-                        )}
-                    </ScrollView>
-                </SafeAreaView>
-            </Modal>
+            <CreateGeoPlaylistModal
+                visible={showCreateModal}
+                onClose={handleCreateModalClose}
+                selectedLocation={selectedLocation}
+                radius={radius}
+                setRadius={setRadius}
+                spotifyPlaylists={spotifyPlaylists}
+                onCreated={handleGeoPlaylistCreated}
+            />
 
-            <Modal visible={showCreateModal} animationType="slide" presentationStyle="pageSheet">
-                <SafeAreaView style={styles.modalContainer}>
-                    <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Neue Geo-Playlist</Text>
-                        <TouchableOpacity onPress={() => {
-                            setShowCreateModal(false);
-                            setSelectedLocation(null);
-                            setMapMode("normal");
-                        }}>
-                            <Ionicons name="close" size={24} color="#6B7280" />
-                        </TouchableOpacity>
-                    </View>
-
-                    <ScrollView style={styles.modalContent}>
-                        <View style={styles.inputSection}>
-                            <Text style={styles.inputLabel}>Name der Geo-Playlist</Text>
-                            <TextInput
-                                value={newPlaylistName}
-                                onChangeText={setNewPlaylistName}
-                                placeholder="z.B. Gym Musik, Büro Vibes..."
-                                style={styles.textInput}
-                                placeholderTextColor="#9CA3AF"
-                            />
-                        </View>
-
-                        <View style={styles.inputSection}>
-                            <Text style={styles.inputLabel}>Radius: {radius}m</Text>
-                            <Slider
-                                minimumValue={10}
-                                maximumValue={500}
-                                step={10}
-                                value={radius}
-                                onValueChange={setRadius}
-                                minimumTrackTintColor="#3B82F6"
-                                maximumTrackTintColor="#E5E7EB"
-                                thumbTintColor="#3B82F6"
-                            />
-                        </View>
-
-                        <View style={styles.inputSection}>
-                            <Text style={styles.inputLabel}>Spotify-Playlist auswählen</Text>
-                            {selectedSpotifyPlaylist && (
-                                <View style={styles.selectedPlaylistCard}>
-                                    <Image
-                                        source={{ uri: selectedSpotifyPlaylist.images?.[0]?.url || 'https://via.placeholder.com/40' }}
-                                        style={styles.selectedPlaylistImage}
-                                    />
-                                    <Text style={styles.selectedPlaylistName}>{selectedSpotifyPlaylist.name}</Text>
-                                </View>
-                            )}
-
-                            <ScrollView style={styles.spotifyPlaylistList} showsVerticalScrollIndicator={false}>
-                                {spotifyPlaylists.map((playlist) => (
-                                    <TouchableOpacity
-                                        key={playlist.id}
-                                        style={[
-                                            styles.spotifyPlaylistItem,
-                                            selectedSpotifyPlaylist?.id === playlist.id && styles.spotifyPlaylistItemSelected
-                                        ]}
-                                        onPress={() => setSelectedSpotifyPlaylist(playlist)}
-                                    >
-                                        <Image
-                                            source={{ uri: playlist.images?.[0]?.url || 'https://via.placeholder.com/40' }}
-                                            style={styles.spotifyPlaylistImage}
-                                        />
-                                        <Text style={styles.spotifyPlaylistName}>{playlist.name}</Text>
-                                        <Text style={styles.spotifyPlaylistTracks}>{playlist.tracks.total} Songs</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </ScrollView>
-                        </View>
-
-                        <TouchableOpacity
-                            style={[
-                                styles.createButton,
-                                (!newPlaylistName.trim() || !selectedSpotifyPlaylist) && styles.createButtonDisabled
-                            ]}
-                            onPress={createGeoPlaylist}
-                            disabled={!newPlaylistName.trim() || !selectedSpotifyPlaylist}
-                        >
-                            <Text style={styles.createButtonText}>Geo-Playlist erstellen</Text>
-                        </TouchableOpacity>
-                    </ScrollView>
-                </SafeAreaView>
-            </Modal>
+            <InvitationSystem
+                visible={showInvitationModal}
+                onClose={() => setShowInvitationModal(false)}
+            />
         </SafeAreaView>
     );
 }
-
-// Task Manager für Background-Tracking
-TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }) => {
-    if (error) {
-        return;
-    }
-
-    const { locations } = data;
-    const currentLocation = locations?.[0]?.coords;
-    if (!currentLocation) return;
-
-});
 
 const styles = StyleSheet.create({
     container: {
@@ -817,14 +744,58 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: "600",
     },
+    currentTrackBanner: {
+        position: "absolute",
+        top: 120,
+        left: 20,
+        right: 20,
+        backgroundColor: "#1F2937",
+        padding: 12,
+        borderRadius: 12,
+        flexDirection: "row",
+        alignItems: "center",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 5,
+    },
+    currentTrackImage: {
+        width: 40,
+        height: 40,
+        borderRadius: 6,
+        marginRight: 12,
+    },
+    currentTrackInfo: {
+        flex: 1,
+    },
+    currentTrackTitle: {
+        color: "white",
+        fontSize: 14,
+        fontWeight: "600",
+        marginBottom: 2,
+    },
+    currentTrackArtist: {
+        color: "#9CA3AF",
+        fontSize: 12,
+    },
+    currentTrackButton: {
+        backgroundColor: "#3B82F6",
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: "center",
+        justifyContent: "center",
+    },
     debugContainer: {
         position: "absolute",
-        top: 60,
+        top: 180,
         left: 20,
         backgroundColor: "rgba(0, 0, 0, 0.8)",
         padding: 12,
         borderRadius: 8,
         minWidth: 200,
+        maxWidth: 250,
     },
     debugTitle: {
         color: "#10B981",
@@ -839,7 +810,7 @@ const styles = StyleSheet.create({
     },
     devModeContainer: {
         position: "absolute",
-        top: 140,
+        top: 60,
         right: 20,
         backgroundColor: "white",
         padding: 16,
@@ -883,8 +854,6 @@ const styles = StyleSheet.create({
         fontWeight: "500",
         textAlign: "center",
     },
-
-    // Floating Action Buttons
     fabContainer: {
         position: "absolute",
         bottom: 80,
@@ -925,202 +894,5 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 8,
         elevation: 5,
-    },
-
-    // Modal Styles
-    modalContainer: {
-        flex: 1,
-        backgroundColor: "#F9FAFB",
-    },
-    modalHeader: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: 20,
-        borderBottomWidth: 1,
-        borderBottomColor: "#E5E7EB",
-        backgroundColor: "white",
-    },
-    modalTitle: {
-        fontSize: 20,
-        fontWeight: "600",
-        color: "#1F2937",
-    },
-    modalContent: {
-        flex: 1,
-        padding: 20,
-    },
-
-    // Empty State
-    emptyState: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        paddingVertical: 60,
-    },
-    emptyStateTitle: {
-        fontSize: 18,
-        fontWeight: "600",
-        color: "#4B5563",
-        marginTop: 16,
-        marginBottom: 8,
-    },
-    emptyStateText: {
-        fontSize: 14,
-        color: "#6B7280",
-        textAlign: "center",
-    },
-
-    // Playlist Cards
-    playlistCard: {
-        flexDirection: "row",
-        backgroundColor: "white",
-        padding: 16,
-        borderRadius: 12,
-        marginBottom: 12,
-        alignItems: "center",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
-    },
-    playlistImage: {
-        width: 60,
-        height: 60,
-        borderRadius: 8,
-    },
-    playlistInfo: {
-        flex: 1,
-        marginLeft: 12,
-    },
-    playlistName: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: "#1F2937",
-        marginBottom: 4,
-    },
-    playlistSpotify: {
-        fontSize: 14,
-        color: "#3B82F6",
-        marginBottom: 4,
-    },
-    playlistDetails: {
-        fontSize: 12,
-        color: "#6B7280",
-    },
-    playlistActions: {
-        flexDirection: "row",
-        gap: 8,
-    },
-    toggleButton: {
-        backgroundColor: "#6B7280",
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    toggleButtonActive: {
-        backgroundColor: "#10B981",
-    },
-    deleteButton: {
-        backgroundColor: "#DC2626",
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        alignItems: "center",
-        justifyContent: "center",
-    },
-
-    // Create Modal Styles
-    inputSection: {
-        marginBottom: 24,
-    },
-    inputLabel: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: "#1F2937",
-        marginBottom: 8,
-    },
-    textInput: {
-        backgroundColor: "white",
-        borderWidth: 1,
-        borderColor: "#E5E7EB",
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 12,
-        fontSize: 16,
-        color: "#1F2937",
-    },
-    selectedPlaylistCard: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#EBF8FF",
-        padding: 12,
-        borderRadius: 8,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: "#3B82F6",
-    },
-    selectedPlaylistImage: {
-        width: 40,
-        height: 40,
-        borderRadius: 6,
-        marginRight: 12,
-    },
-    selectedPlaylistName: {
-        fontSize: 14,
-        fontWeight: "600",
-        color: "#1F2937",
-    },
-    spotifyPlaylistList: {
-        maxHeight: 200,
-        backgroundColor: "white",
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: "#E5E7EB",
-    },
-    spotifyPlaylistItem: {
-        flexDirection: "row",
-        alignItems: "center",
-        padding: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: "#F3F4F6",
-    },
-    spotifyPlaylistItemSelected: {
-        backgroundColor: "#EBF8FF",
-    },
-    spotifyPlaylistImage: {
-        width: 40,
-        height: 40,
-        borderRadius: 6,
-        marginRight: 12,
-    },
-    spotifyPlaylistName: {
-        flex: 1,
-        fontSize: 14,
-        fontWeight: "500",
-        color: "#1F2937",
-    },
-    spotifyPlaylistTracks: {
-        fontSize: 12,
-        color: "#6B7280",
-    },
-    createButton: {
-        backgroundColor: "#3B82F6",
-        padding: 16,
-        borderRadius: 8,
-        alignItems: "center",
-        marginTop: 20,
-        marginBottom: 40,
-    },
-    createButtonDisabled: {
-        backgroundColor: "#9CA3AF",
-    },
-    createButtonText: {
-        color: "white",
-        fontSize: 16,
-        fontWeight: "600",
     },
 });
