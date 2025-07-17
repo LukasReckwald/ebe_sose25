@@ -19,7 +19,7 @@ import {
     spotifyAPICall,
     clearSpotifyTokens,
     SpotifyTokens
-} from '@/utils/spotifyTokenUtils';
+} from '@/utils/spotifyToken';
 
 export default function ProfileScreen() {
     const [user, setUser] = useState(null);
