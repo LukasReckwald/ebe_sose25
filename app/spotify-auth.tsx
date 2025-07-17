@@ -11,13 +11,14 @@ import {
     saveSpotifyTokens,
     clearSpotifyTokens,
     SpotifyTokens
-} from '@/utils/spotifyTokenUtils';
+} from '@/utils/spotifyToken';
 
 // Spotify Auth Config
 const SPOTIFY_CLIENT_ID = 'b2e0f32a87604e3cb0ab618c66633346';
 const REDIRECT_URI = AuthSession.makeRedirectUri({
     scheme: 'ebe-project',
     useProxy: false });
+
 const SCOPES = [
     'user-read-email', 'user-read-private', 'playlist-read-private',
     'playlist-modify-public', 'playlist-modify-private',
