@@ -1,5 +1,4 @@
-﻿// utils/spotifyTokenUtils.ts
-import * as AuthSession from 'expo-auth-session';
+﻿import * as AuthSession from 'expo-auth-session';
 import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth } from '@/firebaseConfig';
 
