@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import {
     View, Text, TextInput, Image, TouchableOpacity, ScrollView,
-    Alert, StyleSheet, ActivityIndicator
+    Alert, StyleSheet, ActivityIndicator, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
@@ -13,9 +13,37 @@ import {
     spotifyAPICall,
     clearSpotifyTokens,
     SpotifyTokens
-} from '@/utils/spotifyTokenUtils';
+} from '@/utils/spotifyToken';
+import {
+    getFirestore,
+    collection,
+    query,
+    where,
+    onSnapshot,
+    doc,
+    getDoc
+} from 'firebase/firestore';
+import * as Location from 'expo-location';
 
-// Diese Komponente ist für /(tabs)/playlist
+interface GeoPlaylist {
+    id: string;
+    name: string;
+    location: {
+        latitude: number;
+        longitude: number;
+    } | null;
+    radius: number;
+    spotifyPlaylistId: string;
+    spotifyPlaylistName: string;
+    spotifyPlaylistImage?: string;
+    isActive: boolean;
+    userId: string;
+    createdAt: any;
+    sharedWith?: string[];
+    isShared?: boolean;
+    originalOwnerId?: string;
+}
+
 export default function PlaylistScreen() {
     // Token Management
     const [tokens, setTokens] = useState<SpotifyTokens | null>(null);
@@ -32,27 +60,64 @@ export default function PlaylistScreen() {
     const [currentTrack, setCurrentTrack] = useState<any>(null);
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
 
+    // GeoPlaylist Features
+    const [geoPlaylists, setGeoPlaylists] = useState<GeoPlaylist[]>([]);
+    const [activeGeoPlaylists, setActiveGeoPlaylists] = useState<GeoPlaylist[]>([]);
+    const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
+    const [showQuickAddModal, setShowQuickAddModal] = useState(false);
+    const [quickAddTrack, setQuickAddTrack] = useState<any>(null);
+    const [isSearching, setIsSearching] = useState(false);
+
     useEffect(() => {
-        // Überprüfe Firebase Auth Status
         if (!auth.currentUser) {
             router.push('/login');
             return;
         }
 
-        // Lade und validiere Spotify-Tokens
         loadAndValidateTokens();
+        loadGeoPlaylists();
+        startLocationTracking();
     }, []);
 
     useEffect(() => {
         if (tokens) {
             initializeApp();
         } else if (!isLoading) {
-            // Keine gültigen Tokens - zurück zur Auth
             router.push('/spotify-auth');
         }
     }, [tokens, isLoading]);
 
-    // Lade und validiere Tokens
+    useEffect(() => {
+        if (userLocation && geoPlaylists.length > 0) {
+            checkActiveGeoPlaylists();
+        }
+    }, [userLocation, geoPlaylists]);
+
+    // Screen Focus Event
+    useEffect(() => {
+        const handleFocus = () => {
+            if (tokens) {
+                fetchPlaylists();
+            }
+        };
+
+        const unsubscribe = router.addListener?.('focus', handleFocus);
+
+        // Fallback: Periodische Aktualisierung alle 30 Sekunden
+        if (!unsubscribe) {
+            const interval = setInterval(() => {
+                if (tokens) {
+                    fetchPlaylists();
+                }
+            }, 30000);
+
+            return () => clearInterval(interval);
+        }
+
+        return unsubscribe;
+    }, [tokens]);
+
+    // UTILITY FUNCTIONS
     const loadAndValidateTokens = async () => {
         try {
             const validTokens = await getValidSpotifyTokens();
@@ -65,14 +130,97 @@ export default function PlaylistScreen() {
         }
     };
 
-    // App initialisieren
+    const loadGeoPlaylists = () => {
+        if (!auth.currentUser) return;
+
+        const db = getFirestore();
+        const geoPlaylistsRef = collection(db, 'geoPlaylists');
+        const q = query(geoPlaylistsRef, where('userId', '==', auth.currentUser.uid));
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const playlists: GeoPlaylist[] = [];
+            snapshot.forEach((doc) => {
+                playlists.push({
+                    id: doc.id,
+                    ...doc.data()
+                } as GeoPlaylist);
+            });
+            setGeoPlaylists(playlists);
+        });
+
+        return unsubscribe;
+    };
+
+    const startLocationTracking = async () => {
+        try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') return;
+
+            const location = await Location.getCurrentPositionAsync({});
+            setUserLocation({
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude
+            });
+
+            const watchId = await Location.watchPositionAsync(
+                {
+                    accuracy: Location.Accuracy.Balanced,
+                    timeInterval: 5000,
+                    distanceInterval: 10,
+                },
+                (loc) => {
+                    setUserLocation({
+                        latitude: loc.coords.latitude,
+                        longitude: loc.coords.longitude
+                    });
+                }
+            );
+
+            return () => {
+                if (watchId) {
+                    watchId.remove();
+                }
+            };
+        } catch (error) {
+            console.error('Location tracking error:', error);
+        }
+    };
+
+    const checkActiveGeoPlaylists = () => {
+        if (!userLocation) return;
+
+        const active = geoPlaylists.filter(geoPlaylist => {
+            if (!geoPlaylist.isActive || !geoPlaylist.location) return false;
+
+            const distance = getDistance(userLocation, geoPlaylist.location);
+            return distance <= geoPlaylist.radius;
+        });
+
+        setActiveGeoPlaylists(active);
+    };
+
+    const getDistance = (point1: {latitude: number, longitude: number}, point2: {latitude: number, longitude: number}) => {
+        const R = 6371000;
+        const lat1 = point1.latitude * Math.PI / 180;
+        const lat2 = point2.latitude * Math.PI / 180;
+        const deltaLat = (point2.latitude - point1.latitude) * Math.PI / 180;
+        const deltaLon = (point2.longitude - point1.longitude) * Math.PI / 180;
+
+        const a = Math.sin(deltaLat/2) * Math.sin(deltaLat/2) +
+            Math.cos(lat1) * Math.cos(lat2) *
+            Math.sin(deltaLon/2) * Math.sin(deltaLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+        return R * c;
+    };
+
+    // SPOTIFY API FUNCTIONS
     const initializeApp = async () => {
         try {
             await fetchProfile();
             await fetchPlaylists();
             fetchCurrentPlayback();
 
-            // Starte Playback-Polling
             const interval = setInterval(fetchCurrentPlayback, 5000);
             return () => clearInterval(interval);
         } catch (error) {
@@ -80,12 +228,10 @@ export default function PlaylistScreen() {
         }
     };
 
-    // Spotify API Wrapper - jetzt vereinfacht
     const spotifyAPI = async (endpoint: string, options: any = {}) => {
         return await spotifyAPICall(endpoint, options);
     };
 
-    // API Funktionen
     const fetchProfile = async () => {
         const profile = await spotifyAPI('/me');
         setUserProfile(profile);
@@ -112,81 +258,7 @@ export default function PlaylistScreen() {
         }
     };
 
-    const togglePlayPause = async () => {
-        // Speichere aktuellen Zustand für Rollback
-        const currentPlayingState = isPlaying;
-        const newPlayingState = !isPlaying;
-
-        try {
-            const endpoint = currentPlayingState ? '/me/player/pause' : '/me/player/play';
-
-            // Sofortige UI-Update für bessere User Experience
-            setIsPlaying(newPlayingState);
-
-            await spotifyAPI(endpoint, { method: 'PUT' });
-
-            // Bestätige den Status nach kurzer Verzögerung - aber nur wenn sich der Zustand nicht geändert hat
-            setTimeout(() => {
-                // Nur aktualisieren wenn der User nicht inzwischen wieder geklickt hat
-                if (isPlaying === newPlayingState) {
-                    fetchCurrentPlayback();
-                }
-            }, 1000);
-        } catch (error) {
-            // Revert UI-Update bei Fehler - aber nur wenn sich nichts geändert hat
-            setTimeout(() => {
-                if (isPlaying === newPlayingState) {
-                    setIsPlaying(currentPlayingState);
-                }
-            }, 100);
-
-            // Prüfe ob wirklich ein Gerät fehlt
-            try {
-                const devices = await spotifyAPI('/me/player/devices');
-                if (devices.devices.length === 0) {
-                    Alert.alert('Kein Gerät verfügbar', 'Bitte öffne Spotify auf einem Gerät.', [
-                        { text: 'Spotify öffnen', onPress: () => Linking.openURL('spotify://') },
-                        { text: 'OK' },
-                    ]);
-                } else {
-                    // Ignoriere Fehler wenn Geräte vorhanden sind - wahrscheinlich hat es trotzdem funktioniert
-                    console.log('Playback möglicherweise erfolgreich trotz API-Fehler');
-                }
-            } catch (deviceError) {
-                Alert.alert('Playback-Fehler', 'Stelle sicher, dass Spotify auf einem Gerät läuft.');
-            }
-        }
-    };
-
-    const searchTracks = async () => {
-        if (!searchQuery.trim()) return;
-        try {
-            const data = await spotifyAPI(`/search?q=${encodeURIComponent(searchQuery)}&type=track&limit=10`);
-            setSearchResults(data.tracks.items);
-        } catch (error) {
-            Alert.alert('Suchfehler', 'Fehler beim Suchen von Tracks.');
-        }
-    };
-
-    const addTrackToPlaylist = async (trackUri: string) => {
-        if (!selectedPlaylist) {
-            return Alert.alert('Fehler', 'Bitte wähle zuerst eine Playlist aus.');
-        }
-
-        try {
-            await spotifyAPI(`/playlists/${selectedPlaylist.id}/tracks`, {
-                method: 'POST',
-                body: JSON.stringify({ uris: [trackUri] }),
-            });
-            Alert.alert('Erfolg', 'Song wurde zur Playlist hinzugefügt!');
-            fetchPlaylistTracks(selectedPlaylist.id);
-            setSearchQuery('');
-            setSearchResults([]);
-        } catch (error) {
-            Alert.alert('Fehler', 'Song konnte nicht hinzugefügt werden.');
-        }
-    };
-
+    // PLAYLIST ACTIONS
     const createPlaylist = async () => {
         if (!newPlaylistName.trim()) {
             return Alert.alert('Fehler', 'Bitte gib einen Namen für die Playlist ein.');
@@ -202,34 +274,166 @@ export default function PlaylistScreen() {
                 body: JSON.stringify({ name, public: true }),
             });
             Alert.alert('Erfolg', `Playlist "${data.name}" wurde erstellt!`);
-            fetchPlaylists();
+
+            await fetchPlaylists();
             setNewPlaylistName('');
         } catch (error) {
             Alert.alert('Fehler', 'Playlist konnte nicht erstellt werden.');
         }
     };
 
-    const playPlaylist = async (playlistId: string) => {
-        // Speichere aktuellen Zustand
-        const currentPlayingState = isPlaying;
+    const addTrackToPlaylist = async (trackUri: string, trackName?: string) => {
+        if (activeGeoPlaylists.length > 0) {
+            const track = searchResults.find(t => t.uri === trackUri) || { uri: trackUri, name: trackName };
+            setQuickAddTrack(track);
+            setShowQuickAddModal(true);
+            return;
+        }
+
+        if (!selectedPlaylist) {
+            Alert.alert(
+                'Playlist wählen',
+                'Du befindest dich nicht im Radius einer Geo-Playlist. Wähle eine Playlist aus der Liste aus.',
+                [{ text: 'OK' }]
+            );
+            return;
+        }
 
         try {
-            await spotifyAPI('/me/player/play', {
-                method: 'PUT',
-                body: JSON.stringify({ context_uri: `spotify:playlist:${playlistId}` }),
+            await spotifyAPI(`/playlists/${selectedPlaylist.id}/tracks`, {
+                method: 'POST',
+                body: JSON.stringify({ uris: [trackUri] }),
+            });
+            Alert.alert('Erfolg', `Song wurde zu "${selectedPlaylist.name}" hinzugefügt!`);
+
+            await fetchPlaylists();
+            if (selectedPlaylist) {
+                await fetchPlaylistTracks(selectedPlaylist.id);
+            }
+
+            setSearchQuery('');
+            setSearchResults([]);
+        } catch (error) {
+            Alert.alert('Fehler', 'Song konnte nicht hinzugefügt werden.');
+        }
+    };
+
+    const addCurrentTrackToPlaylist = async () => {
+        if (!currentTrack) {
+            Alert.alert('Kein Track', 'Es wird gerade kein Song abgespielt.');
+            return;
+        }
+
+        if (activeGeoPlaylists.length > 0) {
+            if (activeGeoPlaylists.length === 1) {
+                await addCurrentTrackToGeoPlaylist(activeGeoPlaylists[0]);
+            } else {
+                setQuickAddTrack(currentTrack);
+                setShowQuickAddModal(true);
+            }
+            return;
+        }
+
+        if (!selectedPlaylist) {
+            Alert.alert(
+                'Playlist wählen',
+                'Du befindest dich nicht im Radius einer Geo-Playlist. Wähle eine Playlist aus der Liste aus um den aktuellen Song hinzuzufügen.',
+                [{ text: 'OK' }]
+            );
+            return;
+        }
+
+        try {
+            await spotifyAPI(`/playlists/${selectedPlaylist.id}/tracks`, {
+                method: 'POST',
+                body: JSON.stringify({ uris: [currentTrack.uri] }),
+            });
+            Alert.alert('Erfolg', `"${currentTrack.name}" wurde zu "${selectedPlaylist.name}" hinzugefügt!`);
+
+            await fetchPlaylists();
+            if (selectedPlaylist) {
+                await fetchPlaylistTracks(selectedPlaylist.id);
+            }
+        } catch (error) {
+            Alert.alert('Fehler', 'Song konnte nicht hinzugefügt werden.');
+        }
+    };
+
+    const addTrackToGeoPlaylist = async (geoPlaylist: GeoPlaylist, trackUri: string, trackName: string) => {
+        try {
+            await spotifyAPI(`/playlists/${geoPlaylist.spotifyPlaylistId}/tracks`, {
+                method: 'POST',
+                body: JSON.stringify({ uris: [trackUri] }),
             });
 
-            // Sofortige UI-Update
-            setIsPlaying(true);
+            Alert.alert(
+                'Song hinzugefügt!',
+                `"${trackName}" wurde zu "${geoPlaylist.name}" hinzugefügt.`
+            );
 
-            // Bestätige den Status nach kurzer Verzögerung - nur wenn sich nichts geändert hat
+            await fetchPlaylists();
+            if (selectedPlaylist?.id === geoPlaylist.spotifyPlaylistId) {
+                await fetchPlaylistTracks(selectedPlaylist.id);
+            }
+
+            setShowQuickAddModal(false);
+            setQuickAddTrack(null);
+            setSearchQuery('');
+            setSearchResults([]);
+        } catch (error) {
+            Alert.alert('Fehler', 'Song konnte nicht hinzugefügt werden.');
+        }
+    };
+
+    const addCurrentTrackToGeoPlaylist = async (geoPlaylist: GeoPlaylist) => {
+        if (!currentTrack) {
+            Alert.alert('Kein Track', 'Es wird gerade kein Song abgespielt.');
+            return;
+        }
+
+        try {
+            await spotifyAPI(`/playlists/${geoPlaylist.spotifyPlaylistId}/tracks`, {
+                method: 'POST',
+                body: JSON.stringify({ uris: [currentTrack.uri] }),
+            });
+
+            Alert.alert(
+                'Song hinzugefügt!',
+                `"${currentTrack.name}" wurde zu "${geoPlaylist.name}" hinzugefügt.`
+            );
+
+            await fetchPlaylists();
+            if (selectedPlaylist?.id === geoPlaylist.spotifyPlaylistId) {
+                await fetchPlaylistTracks(selectedPlaylist.id);
+            }
+        } catch (error) {
+            Alert.alert('Fehler', 'Song konnte nicht hinzugefügt werden.');
+        }
+    };
+
+    // PLAYBACK CONTROLS
+    const togglePlayPause = async () => {
+        const currentPlayingState = isPlaying;
+        const newPlayingState = !isPlaying;
+
+        try {
+            const endpoint = currentPlayingState ? '/me/player/pause' : '/me/player/play';
+            setIsPlaying(newPlayingState);
+
+            await spotifyAPI(endpoint, { method: 'PUT' });
+
             setTimeout(() => {
-                if (isPlaying === true) {
+                if (isPlaying === newPlayingState) {
                     fetchCurrentPlayback();
                 }
-            }, 1500);
+            }, 1000);
         } catch (error) {
-            // Prüfe ob wirklich ein Gerät fehlt
+            setTimeout(() => {
+                if (isPlaying === newPlayingState) {
+                    setIsPlaying(currentPlayingState);
+                }
+            }, 100);
+
             try {
                 const devices = await spotifyAPI('/me/player/devices');
                 if (devices.devices.length === 0) {
@@ -238,9 +442,52 @@ export default function PlaylistScreen() {
                         { text: 'OK' },
                     ]);
                 } else {
-                    // Ignoriere Fehler wenn Geräte vorhanden sind
+                    console.log('Playback möglicherweise erfolgreich trotz API-Fehler');
+                }
+            } catch (deviceError) {
+                Alert.alert('Playback-Fehler', 'Stelle sicher, dass Spotify auf einem Gerät läuft.');
+            }
+        }
+    };
+
+    const searchTracks = async () => {
+        if (!searchQuery.trim()) return;
+
+        setIsSearching(true);
+        try {
+            const data = await spotifyAPI(`/search?q=${encodeURIComponent(searchQuery)}&type=track&limit=10`);
+            setSearchResults(data.tracks.items);
+        } catch (error) {
+            Alert.alert('Suchfehler', 'Fehler beim Suchen von Tracks.');
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    const playPlaylist = async (playlistId: string) => {
+        try {
+            await spotifyAPI('/me/player/play', {
+                method: 'PUT',
+                body: JSON.stringify({ context_uri: `spotify:playlist:${playlistId}` }),
+            });
+
+            setIsPlaying(true);
+
+            setTimeout(() => {
+                if (isPlaying === true) {
+                    fetchCurrentPlayback();
+                }
+            }, 1500);
+        } catch (error) {
+            try {
+                const devices = await spotifyAPI('/me/player/devices');
+                if (devices.devices.length === 0) {
+                    Alert.alert('Kein Gerät verfügbar', 'Bitte öffne Spotify auf einem Gerät.', [
+                        { text: 'Spotify öffnen', onPress: () => Linking.openURL('spotify://') },
+                        { text: 'OK' },
+                    ]);
+                } else {
                     console.log('Playlist-Playback möglicherweise erfolgreich trotz API-Fehler');
-                    // Versuche trotzdem UI zu aktualisieren
                     setIsPlaying(true);
                     setTimeout(() => {
                         if (isPlaying === true) {
@@ -261,23 +508,18 @@ export default function PlaylistScreen() {
                 body: JSON.stringify({ uris: [trackUri] }),
             });
 
-            // Sofortige UI-Update
             setIsPlaying(true);
 
-            // Bestätige den Status nach kurzer Verzögerung - nur wenn sich nichts geändert hat
             setTimeout(() => {
                 fetchCurrentPlayback();
             }, 1500);
         } catch (error) {
-            // Prüfe ob wirklich ein Gerät fehlt
             try {
                 const devices = await spotifyAPI('/me/player/devices');
                 if (devices.devices.length === 0) {
                     Alert.alert('Kein Gerät verfügbar', 'Bitte öffne Spotify auf einem Gerät.');
                 } else {
-                    // Ignoriere Fehler wenn Geräte vorhanden sind
                     console.log('Track-Playback möglicherweise erfolgreich trotz API-Fehler');
-                    // Versuche trotzdem UI zu aktualisieren
                     setIsPlaying(true);
                     setTimeout(() => {
                         fetchCurrentPlayback();
@@ -289,6 +531,7 @@ export default function PlaylistScreen() {
         }
     };
 
+    // LOADING STATES
     if (isLoading) {
         return (
             <SafeAreaView style={styles.center}>
@@ -317,9 +560,55 @@ export default function PlaylistScreen() {
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.pageTitle}>Playlists</Text>
+                {activeGeoPlaylists.length > 0 && (
+                    <View style={styles.geoIndicator}>
+                        <Ionicons name="location" size={16} color="#10B981" />
+                        <Text style={styles.geoIndicatorText}>
+                            {activeGeoPlaylists.length} Geo-Playlist{activeGeoPlaylists.length > 1 ? 's' : ''}
+                        </Text>
+                    </View>
+                )}
             </View>
 
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                {/* Aktive Geo-Playlists */}
+                {activeGeoPlaylists.length > 0 && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionLabel}>🎵 Aktive Geo-Playlisten</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            {activeGeoPlaylists.map((geoPlaylist) => (
+                                <View key={geoPlaylist.id} style={styles.geoPlaylistCard}>
+                                    <Image
+                                        source={{
+                                            uri: geoPlaylist.spotifyPlaylistImage || 'https://via.placeholder.com/100x100/E5E7EB/9CA3AF?text=♪'
+                                        }}
+                                        style={styles.geoPlaylistImage}
+                                    />
+                                    <Text style={styles.geoPlaylistName} numberOfLines={2}>
+                                        {geoPlaylist.name}
+                                    </Text>
+                                    <View style={styles.geoPlaylistActions}>
+                                        <TouchableOpacity
+                                            style={styles.geoActionButton}
+                                            onPress={() => playPlaylist(geoPlaylist.spotifyPlaylistId)}
+                                        >
+                                            <Ionicons name="play" size={12} color="white" />
+                                        </TouchableOpacity>
+                                        {currentTrack && (
+                                            <TouchableOpacity
+                                                style={[styles.geoActionButton, styles.addCurrentButton]}
+                                                onPress={() => addCurrentTrackToGeoPlaylist(geoPlaylist)}
+                                            >
+                                                <Ionicons name="add" size={12} color="white" />
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+                                </View>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
+
                 {/* Musik suchen */}
                 <View style={styles.section}>
                     <Text style={styles.sectionLabel}>Musik suchen</Text>
@@ -333,6 +622,13 @@ export default function PlaylistScreen() {
                             placeholderTextColor="#9CA3AF"
                             onSubmitEditing={searchTracks}
                         />
+                        <TouchableOpacity onPress={searchTracks} style={styles.searchButton}>
+                            {isSearching ? (
+                                <ActivityIndicator size="small" color="white" />
+                            ) : (
+                                <Ionicons name="search" size={18} color="white" />
+                            )}
+                        </TouchableOpacity>
                         {searchQuery.length > 0 && (
                             <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
                                 <Ionicons name="close-circle" size={18} color="#9CA3AF" />
@@ -347,9 +643,14 @@ export default function PlaylistScreen() {
                                 <TouchableOpacity
                                     key={item.id}
                                     style={styles.trackRow}
-                                    onPress={() => addTrackToPlaylist(item.uri)}
+                                    onPress={() => addTrackToPlaylist(item.uri, item.name)}
                                 >
-                                    <Image source={{ uri: item.album.images?.[0]?.url }} style={styles.trackArtwork} />
+                                    <Image
+                                        source={{
+                                            uri: item.album.images?.[0]?.url || 'https://via.placeholder.com/40x40/E5E7EB/9CA3AF?text=♪'
+                                        }}
+                                        style={styles.trackArtwork}
+                                    />
                                     <View style={styles.trackDetails}>
                                         <Text style={styles.trackTitle} numberOfLines={1}>{item.name}</Text>
                                         <Text style={styles.trackArtist} numberOfLines={1}>
@@ -408,7 +709,9 @@ export default function PlaylistScreen() {
                                 }}
                             >
                                 <Image
-                                    source={{ uri: playlist.images?.[0]?.url || 'https://via.placeholder.com/120' }}
+                                    source={{
+                                        uri: playlist.images?.[0]?.url || 'https://via.placeholder.com/120x120/E5E7EB/9CA3AF?text=♪'
+                                    }}
                                     style={styles.playlistArtwork}
                                 />
                                 <View style={styles.playlistInfo}>
@@ -429,7 +732,9 @@ export default function PlaylistScreen() {
                     <View style={styles.section}>
                         <View style={styles.playlistHeader}>
                             <Image
-                                source={{ uri: selectedPlaylist.images?.[0]?.url || 'https://via.placeholder.com/80' }}
+                                source={{
+                                    uri: selectedPlaylist.images?.[0]?.url || 'https://via.placeholder.com/80x80/E5E7EB/9CA3AF?text=♪'
+                                }}
                                 style={styles.selectedArtwork}
                             />
                             <View style={styles.selectedInfo}>
@@ -447,7 +752,7 @@ export default function PlaylistScreen() {
                             </View>
                         </View>
 
-                        {/* Song-Liste - ALLE Songs anzeigen */}
+                        {/* Song-Liste */}
                         <View style={styles.trackList}>
                             {playlistTracks.map(({ track }: any, index: number) => (
                                 <TouchableOpacity
@@ -456,7 +761,12 @@ export default function PlaylistScreen() {
                                     onPress={() => playTrackFromPlaylist(track.uri)}
                                 >
                                     <Text style={styles.trackNumber}>{index + 1}</Text>
-                                    <Image source={{ uri: track.album.images?.[0]?.url }} style={styles.trackArtwork} />
+                                    <Image
+                                        source={{
+                                            uri: track.album.images?.[0]?.url || 'https://via.placeholder.com/40x40/E5E7EB/9CA3AF?text=♪'
+                                        }}
+                                        style={styles.trackArtwork}
+                                    />
                                     <View style={styles.trackDetails}>
                                         <Text style={styles.trackTitle} numberOfLines={1}>{track.name}</Text>
                                         <Text style={styles.trackArtist} numberOfLines={1}>
@@ -472,20 +782,118 @@ export default function PlaylistScreen() {
                     </View>
                 )}
 
-                {/* Bottom Spacing für TabBar und Now Playing Bar */}
                 <View style={styles.bottomSpacing} />
             </ScrollView>
+
+            {/* Quick Add Modal */}
+            <Modal visible={showQuickAddModal} animationType="slide" presentationStyle="pageSheet">
+                <SafeAreaView style={styles.modalContainer}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>Song hinzufügen</Text>
+                        <TouchableOpacity onPress={() => setShowQuickAddModal(false)}>
+                            <Ionicons name="close" size={24} color="#6B7280" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.modalContent}>
+                        {quickAddTrack && (
+                            <View style={styles.trackPreview}>
+                                <Image
+                                    source={{
+                                        uri: quickAddTrack.album?.images?.[0]?.url || 'https://via.placeholder.com/60x60/E5E7EB/9CA3AF?text=♪'
+                                    }}
+                                    style={styles.trackPreviewImage}
+                                />
+                                <View style={styles.trackPreviewInfo}>
+                                    <Text style={styles.trackPreviewTitle}>{quickAddTrack.name}</Text>
+                                    <Text style={styles.trackPreviewArtist}>
+                                        {quickAddTrack.artists?.map((a: any) => a.name).join(', ')}
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
+
+                        <Text style={styles.modalSectionTitle}>Zu Geo-Playlist hinzufügen:</Text>
+
+                        <ScrollView style={styles.geoPlaylistsList}>
+                            {activeGeoPlaylists.map((geoPlaylist) => (
+                                <TouchableOpacity
+                                    key={geoPlaylist.id}
+                                    style={styles.geoPlaylistOption}
+                                    onPress={() => addTrackToGeoPlaylist(geoPlaylist, quickAddTrack.uri, quickAddTrack.name)}
+                                >
+                                    <Image
+                                        source={{
+                                            uri: geoPlaylist.spotifyPlaylistImage || 'https://via.placeholder.com/50x50/E5E7EB/9CA3AF?text=♪'
+                                        }}
+                                        style={styles.geoPlaylistOptionImage}
+                                    />
+                                    <View style={styles.geoPlaylistOptionInfo}>
+                                        <Text style={styles.geoPlaylistOptionName}>{geoPlaylist.name}</Text>
+                                        <Text style={styles.geoPlaylistOptionLocation}>
+                                            📍 Aktiv ({geoPlaylist.radius}m Radius)
+                                        </Text>
+                                    </View>
+                                    <Ionicons name="add-circle" size={24} color="#10B981" />
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+
+                        {selectedPlaylist && (
+                            <>
+                                <Text style={styles.modalSectionTitle}>Oder zu normaler Playlist:</Text>
+                                <TouchableOpacity
+                                    style={styles.normalPlaylistOption}
+                                    onPress={() => {
+                                        addTrackToPlaylist(quickAddTrack.uri, quickAddTrack.name);
+                                        setShowQuickAddModal(false);
+                                    }}
+                                >
+                                    <Image
+                                        source={{
+                                            uri: selectedPlaylist.images?.[0]?.url || 'https://via.placeholder.com/50x50/E5E7EB/9CA3AF?text=♪'
+                                        }}
+                                        style={styles.geoPlaylistOptionImage}
+                                    />
+                                    <View style={styles.geoPlaylistOptionInfo}>
+                                        <Text style={styles.geoPlaylistOptionName}>{selectedPlaylist.name}</Text>
+                                        <Text style={styles.geoPlaylistOptionLocation}>
+                                            {selectedPlaylist.tracks.total} Songs
+                                        </Text>
+                                    </View>
+                                    <Ionicons name="add-circle" size={24} color="#3B82F6" />
+                                </TouchableOpacity>
+                            </>
+                        )}
+                    </View>
+                </SafeAreaView>
+            </Modal>
 
             {/* Now Playing Bar */}
             {currentTrack && (
                 <View style={styles.nowPlayingBar}>
-                    <Image source={{ uri: currentTrack.album.images[0].url }} style={styles.nowPlayingArtwork} />
+                    <Image
+                        source={{
+                            uri: currentTrack.album.images[0]?.url || 'https://via.placeholder.com/48x48/E5E7EB/9CA3AF?text=♪'
+                        }}
+                        style={styles.nowPlayingArtwork}
+                    />
                     <View style={styles.nowPlayingInfo}>
                         <Text style={styles.nowPlayingTitle} numberOfLines={1}>{currentTrack.name}</Text>
                         <Text style={styles.nowPlayingArtist} numberOfLines={1}>
                             {currentTrack.artists.map((a: any) => a.name).join(', ')}
                         </Text>
                     </View>
+
+                    {(activeGeoPlaylists.length > 0 || selectedPlaylist) && (
+                        <TouchableOpacity
+                            style={styles.quickAddCurrentButton}
+                            onPress={addCurrentTrackToPlaylist}
+                        >
+                            <Ionicons name="add" size={16} color="white" />
+                        </TouchableOpacity>
+                    )}
+
                     <TouchableOpacity onPress={togglePlayPause} style={styles.playPauseButton}>
                         <Ionicons
                             name={isPlaying ? "pause" : "play"}
@@ -500,7 +908,6 @@ export default function PlaylistScreen() {
 }
 
 const styles = StyleSheet.create({
-    // Container & Layout
     container: {
         flex: 1,
         backgroundColor: '#F9FAFB',
@@ -510,8 +917,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingTop: 24,
     },
-
-    // Header
     header: {
         paddingHorizontal: 20,
         paddingVertical: 16,
@@ -525,8 +930,21 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#4B5563',
     },
-
-    // Sections
+    geoIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#ECFDF5',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 16,
+        marginTop: 8,
+    },
+    geoIndicatorText: {
+        fontSize: 12,
+        color: '#10B981',
+        marginLeft: 4,
+        fontWeight: '600',
+    },
     section: {
         marginBottom: 32,
     },
@@ -536,8 +954,49 @@ const styles = StyleSheet.create({
         color: '#4B5563',
         marginBottom: 16,
     },
-
-    // Search
+    geoPlaylistCard: {
+        width: 120,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 12,
+        marginRight: 12,
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        borderWidth: 2,
+        borderColor: '#10B981',
+    },
+    geoPlaylistImage: {
+        width: '100%',
+        height: 80,
+        borderRadius: 8,
+        marginBottom: 8,
+    },
+    geoPlaylistName: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 8,
+        lineHeight: 16,
+        height: 32,
+    },
+    geoPlaylistActions: {
+        flexDirection: 'row',
+        gap: 4,
+    },
+    geoActionButton: {
+        backgroundColor: '#10B981',
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    addCurrentButton: {
+        backgroundColor: '#3B82F6',
+    },
     searchContainer: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -562,14 +1021,21 @@ const styles = StyleSheet.create({
         color: '#4B5563',
         height: '100%',
     },
+    searchButton: {
+        backgroundColor: '#3B82F6',
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 8,
+    },
     clearButton: {
         marginLeft: 8,
     },
     searchResults: {
         marginTop: 16,
     },
-
-    // Input Group
     inputGroup: {
         flexDirection: 'row',
         gap: 12,
@@ -591,8 +1057,6 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 4,
     },
-
-    // Buttons
     primaryButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -635,8 +1099,6 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '600',
     },
-
-    // Horizontal Playlist ScrollView
     playlistScrollContainer: {
         paddingLeft: 10,
         paddingRight: 20,
@@ -679,8 +1141,6 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#6B7280',
     },
-
-    // Selected Playlist
     playlistHeader: {
         flexDirection: 'row',
         backgroundColor: '#FFFFFF',
@@ -714,8 +1174,6 @@ const styles = StyleSheet.create({
         color: '#6B7280',
         marginBottom: 8,
     },
-
-    // Track List
     trackList: {
         backgroundColor: '#FFFFFF',
         borderRadius: 12,
@@ -778,19 +1236,115 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-
-    // Bottom Spacing - Konsistenter Abstand für TabBar
+    modalContainer: {
+        flex: 1,
+        backgroundColor: '#F9FAFB',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E7EB',
+        backgroundColor: 'white',
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: '600',
+        color: '#1F2937',
+    },
+    modalContent: {
+        flex: 1,
+        padding: 20,
+    },
+    modalSectionTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 16,
+        marginTop: 20,
+    },
+    trackPreview: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'white',
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
+    trackPreviewImage: {
+        width: 60,
+        height: 60,
+        borderRadius: 8,
+        marginRight: 12,
+    },
+    trackPreviewInfo: {
+        flex: 1,
+    },
+    trackPreviewTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 4,
+    },
+    trackPreviewArtist: {
+        fontSize: 14,
+        color: '#6B7280',
+    },
+    geoPlaylistsList: {
+        maxHeight: 300,
+    },
+    geoPlaylistOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'white',
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
+    geoPlaylistOptionImage: {
+        width: 50,
+        height: 50,
+        borderRadius: 8,
+        marginRight: 12,
+    },
+    geoPlaylistOptionInfo: {
+        flex: 1,
+    },
+    geoPlaylistOptionName: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 4,
+    },
+    geoPlaylistOptionLocation: {
+        fontSize: 12,
+        color: '#10B981',
+    },
+    normalPlaylistOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'white',
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
     bottomSpacing: {
-        height: 120, // Genug Platz für TabBar + zusätzlicher Abstand
+        height: 120,
         marginBottom: 20,
     },
-
-    // Now Playing Bar
     nowPlayingBar: {
         position: 'absolute',
         left: 20,
         right: 20,
-        bottom: 80, // Über der TabBar positioniert
+        bottom: 80,
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#FFFFFF',
@@ -822,6 +1376,15 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#6B7280',
     },
+    quickAddCurrentButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#10B981',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 8,
+    },
     playPauseButton: {
         width: 40,
         height: 40,
@@ -835,8 +1398,6 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 3,
     },
-
-    // Loading & Error States
     center: {
         flex: 1,
         justifyContent: 'center',
