@@ -11,15 +11,18 @@
     ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { auth } from "@/firebaseConfig";
 import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
+    onAuthStateChanged,
+    User
 } from "firebase/auth";
 import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from '@expo/vector-icons';
+import { createOrUpdateUserProfile } from '@/utils/userManagement';
 
 export default function Login() {
     const [email, setEmail] = useState("");
@@ -27,18 +30,72 @@ export default function Login() {
     const [isRegistering, setIsRegistering] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
     const firestore = getFirestore();
 
+    // Auto-Login Check
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                await handleUserLogin(user);
+            } else {
+                setIsCheckingAuth(false);
+            }
+        });
+
+        return unsubscribe;
+    }, []);
+
     useFocusEffect(
         React.useCallback(() => {
-            setEmail("");
-            setPassword("");
-            setErrorMessage("");
-            setIsLoading(false);
-            Keyboard.dismiss();
+            // Nur zurücksetzen wenn noch nicht eingeloggt
+            if (!auth.currentUser) {
+                setEmail("");
+                setPassword("");
+                setErrorMessage("");
+                setIsLoading(false);
+                Keyboard.dismiss();
+            }
         }, [])
     );
+
+    const handleUserLogin = async (user: User) => {
+        try {
+            setIsLoading(true);
+
+            // Erstelle oder aktualisiere User-Profil mit Error Handling
+            try {
+                await createOrUpdateUserProfile(user);
+            } catch (profileError) {
+                console.error("Error creating user profile:", profileError);
+                // Fahre trotzdem fort - User-Profil ist nicht kritisch für Login
+            }
+
+            // Überprüfe Spotify-Verbindung
+            try {
+                const userDoc = await getDoc(doc(firestore, "spotifyTokens", user.uid));
+
+                if (userDoc.exists() && userDoc.data().accessToken) {
+                    // Spotify ist verbunden → zur Hauptapp
+                    router.replace("/(tabs)/mapview");
+                } else {
+                    // Spotify-Verbindung erforderlich
+                    router.replace("/spotify-auth");
+                }
+            } catch (spotifyError) {
+                console.error("Error checking Spotify tokens:", spotifyError);
+                // Fallback: Gehe trotzdem zur Spotify-Verbindung
+                router.replace("/spotify-auth");
+            }
+        } catch (error) {
+            console.error("Error handling user login:", error);
+            setErrorMessage("Fehler beim Laden des Benutzerprofils. Bitte versuche es erneut.");
+        } finally {
+            setIsLoading(false);
+            setIsCheckingAuth(false);
+        }
+    };
 
     const handleAuthError = (error: any) => {
         const code = error.code;
@@ -62,6 +119,9 @@ export default function Login() {
             case "auth/missing-password":
                 setErrorMessage("Bitte gib ein Passwort ein.");
                 break;
+            case "auth/too-many-requests":
+                setErrorMessage("Zu viele Anmeldeversuche. Bitte warte einen Moment.");
+                break;
             default:
                 setErrorMessage("Ein Fehler ist aufgetreten. Bitte versuche es erneut.");
                 console.error("Auth Error:", code);
@@ -74,16 +134,9 @@ export default function Login() {
 
         try {
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            const userDoc = await getDoc(doc(firestore, "spotifyTokens", userCredential.user.uid));
-
-            if (userDoc.exists()) {
-                router.push("/(tabs)/mapview");
-            } else {
-                router.push("/connect-spotify");
-            }
+            // handleUserLogin wird automatisch durch onAuthStateChanged aufgerufen
         } catch (error) {
             handleAuthError(error);
-        } finally {
             setIsLoading(false);
         }
     };
@@ -94,15 +147,30 @@ export default function Login() {
 
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            if (userCredential) {
-                router.push("/(tabs)/mapview");
-            }
+            // handleUserLogin wird automatisch durch onAuthStateChanged aufgerufen
         } catch (error) {
             handleAuthError(error);
-        } finally {
             setIsLoading(false);
         }
     };
+
+    // Loading-Screen während Auto-Login Check
+    if (isCheckingAuth) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.loadingContainer}>
+                    <View style={styles.logoContainer}>
+                        <View style={styles.logoIcon}>
+                            <Ionicons name="musical-notes" size={32} color="#3B82F6" />
+                        </View>
+                        <Text style={styles.logoText}>Notavi</Text>
+                    </View>
+                    <ActivityIndicator size="large" color="#3B82F6" style={styles.loadingIndicator} />
+                    <Text style={styles.loadingText}>Lade Benutzerdaten...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
 
     return (
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -180,7 +248,7 @@ export default function Login() {
                                 {/* Action Buttons */}
                                 <View style={styles.actionSection}>
                                     <TouchableOpacity
-                                        style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
+                                        style={[styles.primaryButton, (isLoading || !email.trim() || !password.trim()) && styles.buttonDisabled]}
                                         onPress={isRegistering ? signUp : signIn}
                                         disabled={isLoading || !email.trim() || !password.trim()}
                                     >
@@ -233,6 +301,10 @@ export default function Login() {
                                         <Ionicons name="play-circle" size={16} color="#8B5CF6" />
                                         <Text style={styles.featureText}>Automatisches Abspielen</Text>
                                     </View>
+                                    <View style={styles.featureItem}>
+                                        <Ionicons name="share" size={16} color="#F59E0B" />
+                                        <Text style={styles.featureText}>Playlisten teilen</Text>
+                                    </View>
                                 </View>
                             </View>
 
@@ -257,6 +329,23 @@ const styles = StyleSheet.create({
     },
     scrollContainer: {
         flex: 1,
+    },
+
+    // Loading Container
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    loadingIndicator: {
+        marginTop: 20,
+        marginBottom: 12,
+    },
+    loadingText: {
+        fontSize: 16,
+        color: '#6B7280',
+        textAlign: 'center',
     },
 
     // Header - Kompakter
