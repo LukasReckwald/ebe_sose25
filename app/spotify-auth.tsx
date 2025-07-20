@@ -1,7 +1,8 @@
 ﻿import React, { useState, useEffect } from 'react';
 import {
-    View, Text, TouchableOpacity, Alert, StyleSheet, SafeAreaView, ActivityIndicator, ScrollView
+    View, Text, TouchableOpacity, Alert, StyleSheet, ActivityIndicator, ScrollView
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as AuthSession from 'expo-auth-session';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
 import { auth } from '@/firebaseConfig';

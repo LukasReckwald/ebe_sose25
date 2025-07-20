@@ -206,7 +206,10 @@ export const CreateGeoPlaylistModal: React.FC<CreateGeoPlaylistModalProps> = ({
                                     </View>
                                 )}
 
-                                <ScrollView style={styles.spotifyPlaylistList} showsVerticalScrollIndicator={false}>
+                                <ScrollView
+                                    style={styles.spotifyPlaylistList}
+                                    showsVerticalScrollIndicator={false}
+                                >
                                     {spotifyPlaylists.map((playlist) => (
                                         <TouchableOpacity
                                             key={playlist.id}

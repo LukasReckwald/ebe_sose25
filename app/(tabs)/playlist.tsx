@@ -68,6 +68,12 @@ export default function PlaylistScreen() {
     const [quickAddTrack, setQuickAddTrack] = useState<any>(null);
     const [isSearching, setIsSearching] = useState(false);
 
+    // UI State
+    const [showCreatePlaylistModal, setShowCreatePlaylistModal] = useState(false);
+    const [showPlaylistDetailModal, setShowPlaylistDetailModal] = useState(false);
+    const [detailPlaylist, setDetailPlaylist] = useState<any>(null);
+    const [currentView, setCurrentView] = useState<'overview' | 'search' | 'create'>('overview');
+
     useEffect(() => {
         if (!auth.currentUser) {
             router.push('/login');
@@ -277,28 +283,14 @@ export default function PlaylistScreen() {
 
             await fetchPlaylists();
             setNewPlaylistName('');
+            setShowCreatePlaylistModal(false);
+            setCurrentView('overview');
         } catch (error) {
             Alert.alert('Fehler', 'Playlist konnte nicht erstellt werden.');
         }
     };
 
     const addTrackToPlaylist = async (trackUri: string, trackName?: string) => {
-        if (activeGeoPlaylists.length > 0) {
-            const track = searchResults.find(t => t.uri === trackUri) || { uri: trackUri, name: trackName };
-            setQuickAddTrack(track);
-            setShowQuickAddModal(true);
-            return;
-        }
-
-        if (!selectedPlaylist) {
-            Alert.alert(
-                'Playlist wählen',
-                'Du befindest dich nicht im Radius einer Geo-Playlist. Wähle eine Playlist aus der Liste aus.',
-                [{ text: 'OK' }]
-            );
-            return;
-        }
-
         try {
             await spotifyAPI(`/playlists/${selectedPlaylist.id}/tracks`, {
                 method: 'POST',
@@ -531,6 +523,12 @@ export default function PlaylistScreen() {
         }
     };
 
+    const openPlaylistDetail = (playlist: any) => {
+        setDetailPlaylist(playlist);
+        fetchPlaylistTracks(playlist.id);
+        setShowPlaylistDetailModal(true);
+    };
+
     // LOADING STATES
     if (isLoading) {
         return (
@@ -558,226 +556,279 @@ export default function PlaylistScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
+            {/* Header mit Navigation */}
             <View style={styles.header}>
                 <Text style={styles.pageTitle}>Playlists</Text>
                 {activeGeoPlaylists.length > 0 && (
                     <View style={styles.geoIndicator}>
                         <Ionicons name="location" size={16} color="#10B981" />
                         <Text style={styles.geoIndicatorText}>
-                            {activeGeoPlaylists.length} Geo-Playlist{activeGeoPlaylists.length > 1 ? 's' : ''}
+                            {activeGeoPlaylists.length} aktive Geo-Playlist{activeGeoPlaylists.length > 1 ? 's' : ''}
                         </Text>
                     </View>
                 )}
             </View>
 
+            {/* Tab Navigation */}
+            <View style={styles.tabContainer}>
+                <TouchableOpacity
+                    style={[styles.tab, currentView === 'overview' && styles.activeTab]}
+                    onPress={() => setCurrentView('overview')}
+                >
+                    <Ionicons
+                        name="library-outline"
+                        size={20}
+                        color={currentView === 'overview' ? '#3B82F6' : '#6B7280'}
+                    />
+                    <Text style={[styles.tabText, currentView === 'overview' && styles.activeTabText]}>
+                        Übersicht
+                    </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.tab, currentView === 'search' && styles.activeTab]}
+                    onPress={() => setCurrentView('search')}
+                >
+                    <Ionicons
+                        name="search-outline"
+                        size={20}
+                        color={currentView === 'search' ? '#3B82F6' : '#6B7280'}
+                    />
+                    <Text style={[styles.tabText, currentView === 'search' && styles.activeTabText]}>
+                        Suchen
+                    </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.tab, currentView === 'create' && styles.activeTab]}
+                    onPress={() => setCurrentView('create')}
+                >
+                    <Ionicons
+                        name="add-circle-outline"
+                        size={20}
+                        color={currentView === 'create' ? '#3B82F6' : '#6B7280'}
+                    />
+                    <Text style={[styles.tabText, currentView === 'create' && styles.activeTabText]}>
+                        Erstellen
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                {/* Aktive Geo-Playlists */}
-                {activeGeoPlaylists.length > 0 && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionLabel}>🎵 Aktive Geo-Playlisten</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                            {activeGeoPlaylists.map((geoPlaylist) => (
-                                <View key={geoPlaylist.id} style={styles.geoPlaylistCard}>
-                                    <Image
-                                        source={{
-                                            uri: geoPlaylist.spotifyPlaylistImage || 'https://via.placeholder.com/100x100/E5E7EB/9CA3AF?text=♪'
-                                        }}
-                                        style={styles.geoPlaylistImage}
-                                    />
-                                    <Text style={styles.geoPlaylistName} numberOfLines={2}>
-                                        {geoPlaylist.name}
+                {/* Übersicht Tab */}
+                {currentView === 'overview' && (
+                    <>
+                        {/* Aktive Geo-Playlists */}
+                        {activeGeoPlaylists.length > 0 && (
+                            <View style={styles.section}>
+                                <View style={styles.sectionHeader}>
+                                    <Text style={styles.sectionLabel}>🎵 Aktive Geo-Playlisten</Text>
+                                    <Text style={styles.sectionSubtitle}>
+                                        Du bist im Radius - Songs werden automatisch hinzugefügt
                                     </Text>
-                                    <View style={styles.geoPlaylistActions}>
-                                        <TouchableOpacity
-                                            style={styles.geoActionButton}
-                                            onPress={() => playPlaylist(geoPlaylist.spotifyPlaylistId)}
-                                        >
-                                            <Ionicons name="play" size={12} color="white" />
-                                        </TouchableOpacity>
-                                        {currentTrack && (
-                                            <TouchableOpacity
-                                                style={[styles.geoActionButton, styles.addCurrentButton]}
-                                                onPress={() => addCurrentTrackToGeoPlaylist(geoPlaylist)}
-                                            >
-                                                <Ionicons name="add" size={12} color="white" />
-                                            </TouchableOpacity>
-                                        )}
-                                    </View>
                                 </View>
-                            ))}
-                        </ScrollView>
+
+                                {activeGeoPlaylists.map((geoPlaylist) => (
+                                    <TouchableOpacity
+                                        key={geoPlaylist.id}
+                                        style={styles.geoPlaylistCard}
+                                        onPress={() => {
+                                            const spotifyPlaylist = playlists.find(p => p.id === geoPlaylist.spotifyPlaylistId);
+                                            if (spotifyPlaylist) {
+                                                openPlaylistDetail(spotifyPlaylist);
+                                            }
+                                        }}
+                                    >
+                                        <Image
+                                            source={{
+                                                uri: geoPlaylist.spotifyPlaylistImage || 'https://via.placeholder.com/80x80/E5E7EB/9CA3AF?text=♪'
+                                            }}
+                                            style={styles.geoPlaylistImage}
+                                        />
+                                        <View style={styles.geoPlaylistInfo}>
+                                            <Text style={styles.geoPlaylistName}>{geoPlaylist.name}</Text>
+                                            <Text style={styles.geoPlaylistMeta}>
+                                                📍 Aktiv • {geoPlaylist.radius}m Radius
+                                            </Text>
+                                        </View>
+                                        <View style={styles.geoPlaylistActions}>
+                                            <TouchableOpacity
+                                                style={styles.playButton}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    playPlaylist(geoPlaylist.spotifyPlaylistId);
+                                                }}
+                                            >
+                                                <Ionicons name="play" size={16} color="white" />
+                                            </TouchableOpacity>
+                                            {currentTrack && (
+                                                <TouchableOpacity
+                                                    style={styles.addCurrentButton}
+                                                    onPress={(e) => {
+                                                        e.stopPropagation();
+                                                        addCurrentTrackToGeoPlaylist(geoPlaylist);
+                                                    }}
+                                                >
+                                                    <Ionicons name="add" size={16} color="white" />
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+
+                        {/* Deine Playlists */}
+                        <View style={styles.section}>
+                            <View style={styles.sectionHeader}>
+                                <Text style={styles.sectionLabel}>Deine Spotify Playlists</Text>
+                                <Text style={styles.sectionSubtitle}>
+                                    Tippe auf eine Playlist für Details
+                                </Text>
+                            </View>
+
+                            <View style={styles.playlistGrid}>
+                                {playlists.map((playlist: any) => (
+                                    <TouchableOpacity
+                                        key={playlist.id}
+                                        style={styles.playlistGridItem}
+                                        onPress={() => openPlaylistDetail(playlist)}
+                                    >
+                                        <Image
+                                            source={{
+                                                uri: playlist.images?.[0]?.url || 'https://via.placeholder.com/120x120/E5E7EB/9CA3AF?text=♪'
+                                            }}
+                                            style={styles.playlistGridImage}
+                                        />
+                                        <Text style={styles.playlistGridTitle} numberOfLines={2}>
+                                            {playlist.name}
+                                        </Text>
+                                        <Text style={styles.playlistGridMeta}>
+                                            {playlist.tracks.total} Songs
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+                    </>
+                )}
+
+                {/* Suchen Tab */}
+                {currentView === 'search' && (
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionLabel}>Musik suchen</Text>
+                            <Text style={styles.sectionSubtitle}>
+                                Finde Songs und füge sie zu deinen Playlists hinzu
+                            </Text>
+                        </View>
+
+                        <View style={styles.searchContainer}>
+                            <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
+                            <TextInput
+                                value={searchQuery}
+                                onChangeText={setSearchQuery}
+                                placeholder="Nach Songs, Künstlern oder Albums suchen..."
+                                style={styles.searchInput}
+                                placeholderTextColor="#9CA3AF"
+                                onSubmitEditing={searchTracks}
+                            />
+                            <TouchableOpacity onPress={searchTracks} style={styles.searchButton}>
+                                {isSearching ? (
+                                    <ActivityIndicator size="small" color="white" />
+                                ) : (
+                                    <Ionicons name="search" size={18} color="white" />
+                                )}
+                            </TouchableOpacity>
+                            {searchQuery.length > 0 && (
+                                <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                                    <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                        {/* Suchergebnisse */}
+                        {searchResults.length > 0 && (
+                            <View style={styles.searchResults}>
+                                <Text style={styles.searchResultsTitle}>Suchergebnisse</Text>
+                                {searchResults.map((item: any) => (
+                                    <TouchableOpacity
+                                        key={item.id}
+                                        style={styles.searchResultItem}
+                                        onPress={() => {
+                                            setQuickAddTrack(item);
+                                            setShowQuickAddModal(true);
+                                        }}
+                                    >
+                                        <Image
+                                            source={{
+                                                uri: item.album.images?.[0]?.url || 'https://via.placeholder.com/50x50/E5E7EB/9CA3AF?text=♪'
+                                            }}
+                                            style={styles.searchResultImage}
+                                        />
+                                        <View style={styles.searchResultInfo}>
+                                            <Text style={styles.searchResultTitle} numberOfLines={1}>{item.name}</Text>
+                                            <Text style={styles.searchResultArtist} numberOfLines={1}>
+                                                {item.artists.map((a: any) => a.name).join(', ')}
+                                            </Text>
+                                        </View>
+                                        <TouchableOpacity
+                                            style={styles.addToPlaylistButton}
+                                            onPress={(e) => {
+                                                e.stopPropagation();
+                                                setQuickAddTrack(item);
+                                                setShowQuickAddModal(true);
+                                            }}
+                                        >
+                                            <Ionicons name="add-circle" size={24} color="#10B981" />
+                                        </TouchableOpacity>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+
+                        {searchQuery && searchResults.length === 0 && !isSearching && (
+                            <View style={styles.noResultsContainer}>
+                                <Ionicons name="search" size={48} color="#9CA3AF" />
+                                <Text style={styles.noResultsText}>Keine Ergebnisse gefunden</Text>
+                                <Text style={styles.noResultsSubtext}>
+                                    Versuche es mit anderen Suchbegriffen
+                                </Text>
+                            </View>
+                        )}
                     </View>
                 )}
 
-                {/* Musik suchen */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>Musik suchen</Text>
-                    <View style={styles.searchContainer}>
-                        <Ionicons name="search" size={18} color="#9CA3AF" style={styles.searchIcon} />
-                        <TextInput
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                            placeholder="Nach Songs suchen..."
-                            style={styles.searchInput}
-                            placeholderTextColor="#9CA3AF"
-                            onSubmitEditing={searchTracks}
-                        />
-                        <TouchableOpacity onPress={searchTracks} style={styles.searchButton}>
-                            {isSearching ? (
-                                <ActivityIndicator size="small" color="white" />
-                            ) : (
-                                <Ionicons name="search" size={18} color="white" />
-                            )}
-                        </TouchableOpacity>
-                        {searchQuery.length > 0 && (
-                            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-                                <Ionicons name="close-circle" size={18} color="#9CA3AF" />
-                            </TouchableOpacity>
-                        )}
-                    </View>
-
-                    {/* Suchergebnisse */}
-                    {searchResults.length > 0 && (
-                        <View style={styles.searchResults}>
-                            {searchResults.map((item: any) => (
-                                <TouchableOpacity
-                                    key={item.id}
-                                    style={styles.trackRow}
-                                    onPress={() => addTrackToPlaylist(item.uri, item.name)}
-                                >
-                                    <Image
-                                        source={{
-                                            uri: item.album.images?.[0]?.url || 'https://via.placeholder.com/40x40/E5E7EB/9CA3AF?text=♪'
-                                        }}
-                                        style={styles.trackArtwork}
-                                    />
-                                    <View style={styles.trackDetails}>
-                                        <Text style={styles.trackTitle} numberOfLines={1}>{item.name}</Text>
-                                        <Text style={styles.trackArtist} numberOfLines={1}>
-                                            {item.artists.map((a: any) => a.name).join(', ')}
-                                        </Text>
-                                    </View>
-                                    <TouchableOpacity style={styles.addButton}>
-                                        <Ionicons name="add" size={18} color="#6B7280" />
-                                    </TouchableOpacity>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                    )}
-                </View>
-
-                {/* Playlist erstellen */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>Playlist erstellen</Text>
-                    <View style={styles.inputGroup}>
-                        <TextInput
-                            value={newPlaylistName}
-                            onChangeText={setNewPlaylistName}
-                            placeholder="Playlist-Name..."
-                            style={styles.textInput}
-                            placeholderTextColor="#9CA3AF"
-                        />
-                        <TouchableOpacity
-                            onPress={createPlaylist}
-                            style={[styles.primaryButton, !newPlaylistName.trim() && styles.buttonDisabled]}
-                            disabled={!newPlaylistName.trim()}
-                        >
-                            <Ionicons name="add" size={16} color="white" />
-                            <Text style={styles.buttonText}>Erstellen</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
-                {/* Deine Playlists */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>Deine Playlists</Text>
-                    <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.playlistScrollContainer}
-                    >
-                        {playlists.map((playlist: any) => (
-                            <TouchableOpacity
-                                key={playlist.id}
-                                style={[
-                                    styles.playlistCard,
-                                    selectedPlaylist?.id === playlist.id && styles.playlistCardSelected
-                                ]}
-                                onPress={() => {
-                                    setSelectedPlaylist(playlist);
-                                    fetchPlaylistTracks(playlist.id);
-                                }}
-                            >
-                                <Image
-                                    source={{
-                                        uri: playlist.images?.[0]?.url || 'https://via.placeholder.com/120x120/E5E7EB/9CA3AF?text=♪'
-                                    }}
-                                    style={styles.playlistArtwork}
-                                />
-                                <View style={styles.playlistInfo}>
-                                    <Text style={styles.playlistTitle} numberOfLines={2}>
-                                        {playlist.name}
-                                    </Text>
-                                    <Text style={styles.playlistMeta}>
-                                        {playlist.tracks.total} Songs
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                </View>
-
-                {/* Ausgewählte Playlist Details */}
-                {selectedPlaylist && (
+                {/* Erstellen Tab */}
+                {currentView === 'create' && (
                     <View style={styles.section}>
-                        <View style={styles.playlistHeader}>
-                            <Image
-                                source={{
-                                    uri: selectedPlaylist.images?.[0]?.url || 'https://via.placeholder.com/80x80/E5E7EB/9CA3AF?text=♪'
-                                }}
-                                style={styles.selectedArtwork}
-                            />
-                            <View style={styles.selectedInfo}>
-                                <Text style={styles.selectedTitle}>{selectedPlaylist.name}</Text>
-                                <Text style={styles.selectedMeta}>
-                                    {selectedPlaylist.tracks.total} Songs • {selectedPlaylist.owner.display_name}
-                                </Text>
-                                <TouchableOpacity
-                                    onPress={() => playPlaylist(selectedPlaylist.id)}
-                                    style={styles.playButton}
-                                >
-                                    <Ionicons name="play" size={14} color="white" />
-                                    <Text style={styles.playButtonText}>Abspielen</Text>
-                                </TouchableOpacity>
-                            </View>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionLabel}>Neue Playlist erstellen</Text>
+                            <Text style={styles.sectionSubtitle}>
+                                Erstelle eine neue Spotify Playlist
+                            </Text>
                         </View>
 
-                        {/* Song-Liste */}
-                        <View style={styles.trackList}>
-                            {playlistTracks.map(({ track }: any, index: number) => (
-                                <TouchableOpacity
-                                    key={`${track.id}-${index}`}
-                                    style={styles.trackRow}
-                                    onPress={() => playTrackFromPlaylist(track.uri)}
-                                >
-                                    <Text style={styles.trackNumber}>{index + 1}</Text>
-                                    <Image
-                                        source={{
-                                            uri: track.album.images?.[0]?.url || 'https://via.placeholder.com/40x40/E5E7EB/9CA3AF?text=♪'
-                                        }}
-                                        style={styles.trackArtwork}
-                                    />
-                                    <View style={styles.trackDetails}>
-                                        <Text style={styles.trackTitle} numberOfLines={1}>{track.name}</Text>
-                                        <Text style={styles.trackArtist} numberOfLines={1}>
-                                            {track.artists.map((a: any) => a.name).join(', ')}
-                                        </Text>
-                                    </View>
-                                    <TouchableOpacity style={styles.playTrackButton}>
-                                        <Ionicons name="play-outline" size={16} color="#6B7280" />
-                                    </TouchableOpacity>
-                                </TouchableOpacity>
-                            ))}
+                        <View style={styles.createPlaylistForm}>
+                            <View style={styles.inputContainer}>
+                                <Text style={styles.inputLabel}>Playlist Name</Text>
+                                <TextInput
+                                    value={newPlaylistName}
+                                    onChangeText={setNewPlaylistName}
+                                    placeholder="z.B. Meine neue Playlist"
+                                    style={styles.textInput}
+                                    placeholderTextColor="#9CA3AF"
+                                />
+                            </View>
+
+                            <TouchableOpacity
+                                onPress={createPlaylist}
+                                style={[styles.createButton, !newPlaylistName.trim() && styles.buttonDisabled]}
+                                disabled={!newPlaylistName.trim()}
+                            >
+                                <Ionicons name="add-circle" size={20} color="white" />
+                                <Text style={styles.createButtonText}>Playlist erstellen</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
                 )}
@@ -785,14 +836,99 @@ export default function PlaylistScreen() {
                 <View style={styles.bottomSpacing} />
             </ScrollView>
 
+            {/* Playlist Detail Modal */}
+            <Modal visible={showPlaylistDetailModal} animationType="slide" presentationStyle="pageSheet">
+                <SafeAreaView style={styles.modalContainer}>
+                    <View style={styles.modalHeader}>
+                        <TouchableOpacity onPress={() => setShowPlaylistDetailModal(false)}>
+                            <Ionicons name="chevron-down" size={24} color="#6B7280" />
+                        </TouchableOpacity>
+                        <Text style={styles.modalTitle}>Playlist Details</Text>
+                        <View style={{ width: 24 }} />
+                    </View>
+
+                    {detailPlaylist && (
+                        <ScrollView style={styles.modalContent}>
+                            {/* Playlist Header */}
+                            <View style={styles.playlistDetailHeader}>
+                                <Image
+                                    source={{
+                                        uri: detailPlaylist.images?.[0]?.url || 'https://via.placeholder.com/120x120/E5E7EB/9CA3AF?text=♪'
+                                    }}
+                                    style={styles.playlistDetailImage}
+                                />
+                                <View style={styles.playlistDetailInfo}>
+                                    <Text style={styles.playlistDetailTitle}>{detailPlaylist.name}</Text>
+                                    <Text style={styles.playlistDetailMeta}>
+                                        {detailPlaylist.tracks.total} Songs • {detailPlaylist.owner.display_name}
+                                    </Text>
+                                    <View style={styles.playlistDetailActions}>
+                                        <TouchableOpacity
+                                            onPress={() => playPlaylist(detailPlaylist.id)}
+                                            style={styles.playPlaylistButton}
+                                        >
+                                            <Ionicons name="play" size={16} color="white" />
+                                            <Text style={styles.playPlaylistButtonText}>Abspielen</Text>
+                                        </TouchableOpacity>
+
+                                        {currentTrack && (
+                                            <TouchableOpacity
+                                                onPress={() => {
+                                                    setSelectedPlaylist(detailPlaylist);
+                                                    addCurrentTrackToPlaylist();
+                                                }}
+                                                style={styles.addCurrentTrackButton}
+                                            >
+                                                <Ionicons name="add" size={16} color="white" />
+                                                <Text style={styles.addCurrentTrackButtonText}>Aktueller Song</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+                                </View>
+                            </View>
+
+                            {/* Song Liste */}
+                            <View style={styles.trackListContainer}>
+                                <Text style={styles.trackListTitle}>Songs</Text>
+                                {playlistTracks.map(({ track }: any, index: number) => (
+                                    <TouchableOpacity
+                                        key={`${track.id}-${index}`}
+                                        style={styles.trackItem}
+                                        onPress={() => playTrackFromPlaylist(track.uri)}
+                                    >
+                                        <Text style={styles.trackNumber}>{index + 1}</Text>
+                                        <Image
+                                            source={{
+                                                uri: track.album.images?.[0]?.url || 'https://via.placeholder.com/40x40/E5E7EB/9CA3AF?text=♪'
+                                            }}
+                                            style={styles.trackItemImage}
+                                        />
+                                        <View style={styles.trackItemInfo}>
+                                            <Text style={styles.trackItemTitle} numberOfLines={1}>{track.name}</Text>
+                                            <Text style={styles.trackItemArtist} numberOfLines={1}>
+                                                {track.artists.map((a: any) => a.name).join(', ')}
+                                            </Text>
+                                        </View>
+                                        <TouchableOpacity style={styles.playTrackButton}>
+                                            <Ionicons name="play-outline" size={16} color="#6B7280" />
+                                        </TouchableOpacity>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </ScrollView>
+                    )}
+                </SafeAreaView>
+            </Modal>
+
             {/* Quick Add Modal */}
             <Modal visible={showQuickAddModal} animationType="slide" presentationStyle="pageSheet">
                 <SafeAreaView style={styles.modalContainer}>
                     <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Song hinzufügen</Text>
                         <TouchableOpacity onPress={() => setShowQuickAddModal(false)}>
                             <Ionicons name="close" size={24} color="#6B7280" />
                         </TouchableOpacity>
+                        <Text style={styles.modalTitle}>Song hinzufügen</Text>
+                        <View style={{ width: 24 }} />
                     </View>
 
                     <View style={styles.modalContent}>
@@ -813,58 +949,69 @@ export default function PlaylistScreen() {
                             </View>
                         )}
 
-                        <Text style={styles.modalSectionTitle}>Zu Geo-Playlist hinzufügen:</Text>
-
-                        <ScrollView style={styles.geoPlaylistsList}>
-                            {activeGeoPlaylists.map((geoPlaylist) => (
-                                <TouchableOpacity
-                                    key={geoPlaylist.id}
-                                    style={styles.geoPlaylistOption}
-                                    onPress={() => addTrackToGeoPlaylist(geoPlaylist, quickAddTrack.uri, quickAddTrack.name)}
-                                >
-                                    <Image
-                                        source={{
-                                            uri: geoPlaylist.spotifyPlaylistImage || 'https://via.placeholder.com/50x50/E5E7EB/9CA3AF?text=♪'
-                                        }}
-                                        style={styles.geoPlaylistOptionImage}
-                                    />
-                                    <View style={styles.geoPlaylistOptionInfo}>
-                                        <Text style={styles.geoPlaylistOptionName}>{geoPlaylist.name}</Text>
-                                        <Text style={styles.geoPlaylistOptionLocation}>
-                                            📍 Aktiv ({geoPlaylist.radius}m Radius)
-                                        </Text>
-                                    </View>
-                                    <Ionicons name="add-circle" size={24} color="#10B981" />
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-
-                        {selectedPlaylist && (
+                        {activeGeoPlaylists.length > 0 && (
                             <>
-                                <Text style={styles.modalSectionTitle}>Oder zu normaler Playlist:</Text>
+                                <Text style={styles.modalSectionTitle}>📍 Aktive Geo-Playlists</Text>
+                                <Text style={styles.modalSectionSubtitle}>
+                                    Du befindest dich im Radius dieser Playlists
+                                </Text>
+                                <ScrollView style={styles.playlistOptionsList}>
+                                    {activeGeoPlaylists.map((geoPlaylist) => (
+                                        <TouchableOpacity
+                                            key={geoPlaylist.id}
+                                            style={styles.geoPlaylistOption}
+                                            onPress={() => addTrackToGeoPlaylist(geoPlaylist, quickAddTrack.uri, quickAddTrack.name)}
+                                        >
+                                            <Image
+                                                source={{
+                                                    uri: geoPlaylist.spotifyPlaylistImage || 'https://via.placeholder.com/50x50/E5E7EB/9CA3AF?text=♪'
+                                                }}
+                                                style={styles.playlistOptionImage}
+                                            />
+                                            <View style={styles.playlistOptionInfo}>
+                                                <Text style={styles.playlistOptionName}>{geoPlaylist.name}</Text>
+                                                <Text style={styles.playlistOptionMeta}>
+                                                    📍 Aktiv • {geoPlaylist.radius}m Radius
+                                                </Text>
+                                            </View>
+                                            <Ionicons name="add-circle" size={24} color="#10B981" />
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </>
+                        )}
+
+                        <Text style={styles.modalSectionTitle}>🎵 Normale Playlists</Text>
+                        <Text style={styles.modalSectionSubtitle}>
+                            Wähle eine deiner Spotify-Playlists
+                        </Text>
+                        <ScrollView style={styles.playlistOptionsList}>
+                            {playlists.map((playlist: any) => (
                                 <TouchableOpacity
+                                    key={playlist.id}
                                     style={styles.normalPlaylistOption}
                                     onPress={() => {
                                         addTrackToPlaylist(quickAddTrack.uri, quickAddTrack.name);
+                                        setSelectedPlaylist(playlist);
                                         setShowQuickAddModal(false);
                                     }}
                                 >
                                     <Image
                                         source={{
-                                            uri: selectedPlaylist.images?.[0]?.url || 'https://via.placeholder.com/50x50/E5E7EB/9CA3AF?text=♪'
+                                            uri: playlist.images?.[0]?.url || 'https://via.placeholder.com/50x50/E5E7EB/9CA3AF?text=♪'
                                         }}
-                                        style={styles.geoPlaylistOptionImage}
+                                        style={styles.playlistOptionImage}
                                     />
-                                    <View style={styles.geoPlaylistOptionInfo}>
-                                        <Text style={styles.geoPlaylistOptionName}>{selectedPlaylist.name}</Text>
-                                        <Text style={styles.geoPlaylistOptionLocation}>
-                                            {selectedPlaylist.tracks.total} Songs
+                                    <View style={styles.playlistOptionInfo}>
+                                        <Text style={styles.playlistOptionName}>{playlist.name}</Text>
+                                        <Text style={styles.playlistOptionMeta}>
+                                            {playlist.tracks.total} Songs • {playlist.owner.display_name}
                                         </Text>
                                     </View>
                                     <Ionicons name="add-circle" size={24} color="#3B82F6" />
                                 </TouchableOpacity>
-                            </>
-                        )}
+                            ))}
+                        </ScrollView>
                     </View>
                 </SafeAreaView>
             </Modal>
@@ -915,7 +1062,7 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
         paddingHorizontal: 20,
-        paddingTop: 24,
+        paddingTop: 16,
     },
     header: {
         paddingHorizontal: 20,
@@ -928,7 +1075,7 @@ const styles = StyleSheet.create({
     pageTitle: {
         fontSize: 24,
         fontWeight: '600',
-        color: '#4B5563',
+        color: '#1F2937',
     },
     geoIndicator: {
         flexDirection: 'row',
@@ -945,21 +1092,62 @@ const styles = StyleSheet.create({
         marginLeft: 4,
         fontWeight: '600',
     },
+
+    // Tab Navigation
+    tabContainer: {
+        flexDirection: 'row',
+        backgroundColor: '#FFFFFF',
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E7EB',
+        paddingHorizontal: 20,
+    },
+    tab: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+        gap: 6,
+    },
+    activeTab: {
+        borderBottomWidth: 2,
+        borderBottomColor: '#3B82F6',
+    },
+    tabText: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#6B7280',
+    },
+    activeTabText: {
+        color: '#3B82F6',
+    },
+
+    // Sections
     section: {
         marginBottom: 32,
     },
-    sectionLabel: {
-        fontSize: 16,
-        fontWeight: '500',
-        color: '#4B5563',
+    sectionHeader: {
         marginBottom: 16,
     },
+    sectionLabel: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 4,
+    },
+    sectionSubtitle: {
+        fontSize: 14,
+        color: '#6B7280',
+    },
+
+    // Geo Playlist Cards
     geoPlaylistCard: {
-        width: 120,
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: '#FFFFFF',
         borderRadius: 12,
-        padding: 12,
-        marginRight: 12,
+        padding: 16,
+        marginBottom: 12,
         elevation: 3,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
@@ -969,34 +1157,92 @@ const styles = StyleSheet.create({
         borderColor: '#10B981',
     },
     geoPlaylistImage: {
-        width: '100%',
+        width: 80,
         height: 80,
         borderRadius: 8,
-        marginBottom: 8,
+        marginRight: 16,
+    },
+    geoPlaylistInfo: {
+        flex: 1,
+        gap: 4,
     },
     geoPlaylistName: {
-        fontSize: 12,
+        fontSize: 16,
         fontWeight: '600',
         color: '#1F2937',
-        marginBottom: 8,
-        lineHeight: 16,
-        height: 32,
+    },
+    geoPlaylistMeta: {
+        fontSize: 14,
+        color: '#10B981',
     },
     geoPlaylistActions: {
         flexDirection: 'row',
-        gap: 4,
+        gap: 8,
     },
-    geoActionButton: {
-        backgroundColor: '#10B981',
-        width: 24,
-        height: 24,
-        borderRadius: 12,
+    playButton: {
+        backgroundColor: '#3B82F6',
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         alignItems: 'center',
         justifyContent: 'center',
+        elevation: 2,
+        shadowColor: '#3B82F6',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
     },
     addCurrentButton: {
-        backgroundColor: '#3B82F6',
+        backgroundColor: '#10B981',
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        elevation: 2,
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
     },
+
+    // Playlist Grid
+    playlistGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 16,
+    },
+    playlistGridItem: {
+        width: '47%',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 12,
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    playlistGridImage: {
+        width: '100%',
+        aspectRatio: 1,
+        borderRadius: 8,
+        marginBottom: 8,
+    },
+    playlistGridTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 4,
+        lineHeight: 18,
+        height: 36,
+    },
+    playlistGridMeta: {
+        fontSize: 12,
+        color: '#6B7280',
+    },
+
+    // Search
     searchContainer: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1005,12 +1251,13 @@ const styles = StyleSheet.create({
         borderColor: '#E5E7EB',
         borderRadius: 12,
         paddingHorizontal: 12,
-        height: 44,
-        elevation: 5,
+        height: 48,
+        elevation: 2,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.1,
-        shadowRadius: 4,
+        shadowRadius: 2,
+        marginBottom: 20,
     },
     searchIcon: {
         marginRight: 8,
@@ -1018,14 +1265,14 @@ const styles = StyleSheet.create({
     searchInput: {
         flex: 1,
         fontSize: 16,
-        color: '#4B5563',
+        color: '#1F2937',
         height: '100%',
     },
     searchButton: {
         backgroundColor: '#3B82F6',
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         alignItems: 'center',
         justifyContent: 'center',
         marginLeft: 8,
@@ -1034,208 +1281,128 @@ const styles = StyleSheet.create({
         marginLeft: 8,
     },
     searchResults: {
-        marginTop: 16,
-    },
-    inputGroup: {
-        flexDirection: 'row',
-        gap: 12,
-        alignItems: 'flex-end',
-    },
-    textInput: {
-        flex: 1,
-        backgroundColor: '#FFFFFF',
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 12,
-        fontSize: 16,
-        color: '#4B5563',
-        elevation: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-    },
-    primaryButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#3B82F6',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderRadius: 8,
-        gap: 6,
-        elevation: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-    },
-    buttonDisabled: {
-        backgroundColor: '#9CA3AF',
-    },
-    buttonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    playButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#3B82F6',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 6,
-        gap: 4,
-        marginTop: 8,
-        elevation: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-    },
-    playButtonText: {
-        color: '#fff',
-        fontSize: 12,
-        fontWeight: '600',
-    },
-    playlistScrollContainer: {
-        paddingLeft: 10,
-        paddingRight: 20,
-        paddingBottom: 10,
-        paddingTop: 5,
-    },
-    playlistCard: {
-        width: 160,
         backgroundColor: '#FFFFFF',
         borderRadius: 12,
-        padding: 12,
-        marginRight: 16,
-        elevation: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-    },
-    playlistCardSelected: {
-        backgroundColor: '#3B82F6',
-        borderWidth: 2,
-        borderColor: '#3B82F6',
-    },
-    playlistArtwork: {
-        width: '100%',
-        height: 136,
-        borderRadius: 8,
-        marginBottom: 8,
-    },
-    playlistInfo: {
-        gap: 4,
-    },
-    playlistTitle: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#4B5563',
-        lineHeight: 18,
-    },
-    playlistMeta: {
-        fontSize: 12,
-        color: '#6B7280',
-    },
-    playlistHeader: {
-        flexDirection: 'row',
-        backgroundColor: '#FFFFFF',
         padding: 16,
-        borderRadius: 12,
-        marginBottom: 16,
-        elevation: 5,
+        elevation: 2,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.1,
-        shadowRadius: 4,
+        shadowRadius: 2,
     },
-    selectedArtwork: {
-        width: 80,
-        height: 80,
-        borderRadius: 8,
-    },
-    selectedInfo: {
-        flex: 1,
-        marginLeft: 16,
-        justifyContent: 'center',
-    },
-    selectedTitle: {
-        fontSize: 18,
+    searchResultsTitle: {
+        fontSize: 16,
         fontWeight: '600',
-        color: '#4B5563',
-        marginBottom: 4,
+        color: '#1F2937',
+        marginBottom: 12,
     },
-    selectedMeta: {
-        fontSize: 14,
-        color: '#6B7280',
-        marginBottom: 8,
-    },
-    trackList: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 12,
-        elevation: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        overflow: 'hidden',
-    },
-    trackRow: {
+    searchResultItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
         paddingVertical: 12,
         borderBottomWidth: 1,
         borderBottomColor: '#F3F4F6',
     },
-    trackNumber: {
-        width: 24,
-        fontSize: 14,
-        color: '#6B7280',
-        textAlign: 'center',
+    searchResultImage: {
+        width: 50,
+        height: 50,
+        borderRadius: 8,
         marginRight: 12,
     },
-    trackArtwork: {
-        width: 40,
-        height: 40,
-        borderRadius: 6,
-        marginRight: 12,
-    },
-    trackDetails: {
+    searchResultInfo: {
         flex: 1,
-        gap: 2,
+        gap: 4,
     },
-    trackTitle: {
+    searchResultTitle: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#4B5563',
+        color: '#1F2937',
     },
-    trackArtist: {
+    searchResultArtist: {
         fontSize: 12,
         color: '#6B7280',
     },
-    addButton: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: '#F9FAFB',
-        justifyContent: 'center',
+    addToPlaylistButton: {
+        padding: 8,
+    },
+    noResultsContainer: {
         alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 60,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    noResultsText: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#6B7280',
+        marginTop: 12,
+    },
+    noResultsSubtext: {
+        fontSize: 14,
+        color: '#9CA3AF',
+        marginTop: 4,
+    },
+
+    // Create Playlist
+    createPlaylistForm: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 20,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    inputContainer: {
+        marginBottom: 20,
+    },
+    inputLabel: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#374151',
+        marginBottom: 8,
+    },
+    textInput: {
+        backgroundColor: '#F9FAFB',
         borderWidth: 1,
         borderColor: '#E5E7EB',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        fontSize: 16,
+        color: '#1F2937',
     },
-    playTrackButton: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: '#F9FAFB',
-        justifyContent: 'center',
+    createButton: {
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#3B82F6',
+        paddingVertical: 14,
+        borderRadius: 8,
+        gap: 8,
+        elevation: 2,
+        shadowColor: '#3B82F6',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
     },
+    buttonDisabled: {
+        backgroundColor: '#9CA3AF',
+    },
+    createButtonText: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+
+    // Modal Styles
     modalContainer: {
         flex: 1,
         backgroundColor: '#F9FAFB',
@@ -1247,7 +1414,7 @@ const styles = StyleSheet.create({
         padding: 20,
         borderBottomWidth: 1,
         borderBottomColor: '#E5E7EB',
-        backgroundColor: 'white',
+        backgroundColor: '#FFFFFF',
     },
     modalTitle: {
         fontSize: 20,
@@ -1258,17 +1425,150 @@ const styles = StyleSheet.create({
         flex: 1,
         padding: 20,
     },
+
+    // Playlist Detail Modal
+    playlistDetailHeader: {
+        flexDirection: 'row',
+        backgroundColor: '#FFFFFF',
+        padding: 20,
+        borderRadius: 12,
+        marginBottom: 20,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    playlistDetailImage: {
+        width: 120,
+        height: 120,
+        borderRadius: 12,
+        marginRight: 16,
+    },
+    playlistDetailInfo: {
+        flex: 1,
+        justifyContent: 'center',
+    },
+    playlistDetailTitle: {
+        fontSize: 20,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 6,
+    },
+    playlistDetailMeta: {
+        fontSize: 14,
+        color: '#6B7280',
+        marginBottom: 16,
+    },
+    playlistDetailActions: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    playPlaylistButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#3B82F6',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 8,
+        gap: 6,
+    },
+    playPlaylistButtonText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    addCurrentTrackButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#10B981',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 8,
+        gap: 6,
+    },
+    addCurrentTrackButtonText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+
+    // Track List
+    trackListContainer: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 16,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    trackListTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 12,
+    },
+    trackItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6',
+    },
+    trackNumber: {
+        width: 24,
+        fontSize: 14,
+        color: '#6B7280',
+        textAlign: 'center',
+        marginRight: 12,
+    },
+    trackItemImage: {
+        width: 40,
+        height: 40,
+        borderRadius: 6,
+        marginRight: 12,
+    },
+    trackItemInfo: {
+        flex: 1,
+        gap: 2,
+    },
+    trackItemTitle: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#1F2937',
+    },
+    trackItemArtist: {
+        fontSize: 12,
+        color: '#6B7280',
+    },
+    playTrackButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#F9FAFB',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    // Quick Add Modal
     modalSectionTitle: {
         fontSize: 16,
         fontWeight: '600',
         color: '#1F2937',
-        marginBottom: 16,
+        marginBottom: 8,
         marginTop: 20,
+    },
+    modalSectionSubtitle: {
+        fontSize: 14,
+        color: '#6B7280',
+        marginBottom: 16,
     },
     trackPreview: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'white',
+        backgroundColor: '#FFFFFF',
         padding: 16,
         borderRadius: 12,
         marginBottom: 20,
@@ -1294,52 +1594,61 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#6B7280',
     },
-    geoPlaylistsList: {
+    playlistOptionsList: {
         maxHeight: 300,
+        marginBottom: 20,
     },
     geoPlaylistOption: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'white',
+        backgroundColor: '#FFFFFF',
         padding: 16,
         borderRadius: 12,
         marginBottom: 12,
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
+        borderWidth: 2,
+        borderColor: '#10B981',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
     },
-    geoPlaylistOptionImage: {
+    playlistOptionImage: {
         width: 50,
         height: 50,
         borderRadius: 8,
         marginRight: 12,
     },
-    geoPlaylistOptionInfo: {
+    playlistOptionInfo: {
         flex: 1,
     },
-    geoPlaylistOptionName: {
+    playlistOptionName: {
         fontSize: 14,
         fontWeight: '600',
         color: '#1F2937',
         marginBottom: 4,
     },
-    geoPlaylistOptionLocation: {
+    playlistOptionMeta: {
         fontSize: 12,
         color: '#10B981',
     },
     normalPlaylistOption: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'white',
+        backgroundColor: '#FFFFFF',
         padding: 16,
         borderRadius: 12,
         marginBottom: 12,
         borderWidth: 1,
         borderColor: '#E5E7EB',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
     },
-    bottomSpacing: {
-        height: 120,
-        marginBottom: 20,
-    },
+
+    // Now Playing Bar
     nowPlayingBar: {
         position: 'absolute',
         left: 20,
@@ -1370,7 +1679,7 @@ const styles = StyleSheet.create({
     nowPlayingTitle: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#4B5563',
+        color: '#1F2937',
     },
     nowPlayingArtist: {
         fontSize: 12,
@@ -1398,6 +1707,8 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 3,
     },
+
+    // Loading and Error States
     center: {
         flex: 1,
         justifyContent: 'center',
@@ -1439,5 +1750,11 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 16,
         fontWeight: '600',
+    },
+
+    // Spacing
+    bottomSpacing: {
+        height: 120,
+        marginBottom: 20,
     },
 });
