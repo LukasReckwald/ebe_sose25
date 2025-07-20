@@ -36,7 +36,7 @@ import {
 } from 'firebase/firestore';
 
 // Importiere die neuen Komponenten
-import { GeoPlaylistManager } from '@/components/GeoPlaylistManager';
+import GeoPlaylistMapManager from '@/components/map/GeoPlaylistMapManager';
 import { CreateGeoPlaylistModal } from '@/components/CreateGeoPlaylistModal';
 import { InvitationSystem } from '@/components/InvitationSystem';
 
@@ -666,7 +666,7 @@ export default function GeoPlaylistMap() {
             </TouchableOpacity>
 
             {/* Modals */}
-            <GeoPlaylistManager
+            <GeoPlaylistMapManager
                 visible={showPlaylistModal}
                 onClose={() => setShowPlaylistModal(false)}
                 geoPlaylists={geoPlaylists}

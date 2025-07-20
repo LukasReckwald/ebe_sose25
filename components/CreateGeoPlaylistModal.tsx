@@ -1,5 +1,4 @@
-﻿// components/CreateGeoPlaylistModal.tsx
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
     View, Text, Modal, ScrollView, TouchableOpacity,
     TextInput, Alert, StyleSheet, Image, Switch
@@ -86,10 +85,8 @@ export const CreateGeoPlaylistModal: React.FC<CreateGeoPlaylistModalProps> = ({
             let spotifyPlaylistData;
 
             if (createNewSpotifyPlaylist) {
-                // Erstelle neue Spotify-Playlist
                 spotifyPlaylistData = await createSpotifyPlaylist(newPlaylistName.trim());
             } else {
-                // Verwende ausgewählte Playlist
                 spotifyPlaylistData = selectedSpotifyPlaylist;
             }
 
@@ -99,13 +96,12 @@ export const CreateGeoPlaylistModal: React.FC<CreateGeoPlaylistModalProps> = ({
                 radius: radius,
                 spotifyPlaylistId: spotifyPlaylistData.id,
                 spotifyPlaylistName: spotifyPlaylistData.name,
-                // Nur hinzufügen wenn Bild existiert
                 spotifyPlaylistImage: spotifyPlaylistData.images?.[0]?.url ?? null,
                 isActive: true,
                 userId: auth.currentUser.uid,
                 createdAt: new Date(),
                 sharedWith: [],
-                createdSpotifyPlaylist: createNewSpotifyPlaylist // Flag für später
+                createdSpotifyPlaylist: createNewSpotifyPlaylist
             };
 
             await addDoc(collection(db, 'geoPlaylists'), newGeoPlaylist);
