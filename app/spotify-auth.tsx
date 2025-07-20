@@ -245,6 +245,15 @@ export default function SpotifyAuth() {
                                 Durchsuche, erstelle und bearbeite deine Spotify-Playlisten
                             </Text>
                         </View>
+                        <View style={styles.featureCard}>
+                            <View style={styles.featureIcon}>
+                                <Ionicons name="share" size={24} color="#F59E0B" />
+                            </View>
+                            <Text style={styles.featureTitle}>Geo-Playlisten teilen</Text>
+                            <Text style={styles.featureDescription}>
+                                Gib deine Geo-Playlisten ganz einfach für andere frei
+                            </Text>
+                        </View>
                     </View>
                 </View>
 
