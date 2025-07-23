@@ -49,7 +49,6 @@ export function useSpotifyAPI(tokens: any) {
                 if (data && data.items) {
                     allPlaylists = [...allPlaylists, ...data.items];
 
-                    // Check if there are more playlists
                     if (data.items.length < limit || allPlaylists.length >= data.total) {
                         hasMore = false;
                     } else {
@@ -64,7 +63,6 @@ export function useSpotifyAPI(tokens: any) {
         } catch (error) {
             console.error('Error fetching playlists:', error);
 
-            // Fallback: try to fetch just the first page
             try {
                 const data = await spotifyAPI('/me/playlists?limit=50');
                 if (data && data.items) {
@@ -133,7 +131,6 @@ export function useSpotifyAPI(tokens: any) {
             Alert.alert('Erfolg', `"${songName}" wurde zu "${playlistName}" hinzugefügt!`);
 
             await fetchPlaylists();
-            // Modal wird im Parent geschlossen
 
         } catch (error) {
             Alert.alert('Fehler', 'Song konnte nicht hinzugefügt werden.');
@@ -154,12 +151,29 @@ export function useSpotifyAPI(tokens: any) {
         }
     };
 
-    const addCurrentTrackToPlaylist = async () => {
+    const addCurrentTrackToPlaylist = async (playlistId?: string, playlist?: any) => {
         if (!currentTrack) {
             Alert.alert('Kein Track', 'Es wird gerade kein Song abgespielt.');
             return;
         }
-        // Implementation depends on context
+
+        if (!playlistId) {
+            return;
+        }
+
+        try {
+            await spotifyAPI(`/playlists/${playlistId}/tracks`, {
+                method: 'POST',
+                body: JSON.stringify({ uris: [currentTrack.uri] }),
+            });
+
+            const playlistName = playlist?.name || 'der Playlist';
+            Alert.alert('Song hinzugefügt!', `"${currentTrack.name}" wurde zu "${playlistName}" hinzugefügt.`);
+            await fetchPlaylists();
+        } catch (error) {
+            Alert.alert('Fehler', 'Song konnte nicht hinzugefügt werden.');
+            throw error;
+        }
     };
 
     const addCurrentTrackToGeoPlaylist = async (geoPlaylist: any) => {
@@ -265,7 +279,6 @@ export function useSpotifyAPI(tokens: any) {
         }
     };
 
-    // Screen Focus Event
     useEffect(() => {
         const handleFocus = () => {
             if (tokens) {
