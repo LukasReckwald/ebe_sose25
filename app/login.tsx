@@ -23,6 +23,8 @@ import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from '@expo/vector-icons';
 import { createOrUpdateUserProfile } from '@/utils/userManagement';
+import { startBackgroundLocationTracking } from '@/utils/backgroundLocationService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function Login() {
     const [email, setEmail] = useState("");
@@ -34,7 +36,6 @@ export default function Login() {
 
     const firestore = getFirestore();
 
-    // Auto-Login Check
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
@@ -49,7 +50,6 @@ export default function Login() {
 
     useFocusEffect(
         React.useCallback(() => {
-            // Nur zurücksetzen wenn noch nicht eingeloggt
             if (!auth.currentUser) {
                 setEmail("");
                 setPassword("");
@@ -64,28 +64,33 @@ export default function Login() {
         try {
             setIsLoading(true);
 
-            // Erstelle oder aktualisiere User-Profil mit Error Handling
+            await AsyncStorage.setItem('currentUserId', user.uid);
+
             try {
                 await createOrUpdateUserProfile(user);
             } catch (profileError) {
                 console.error("Error creating user profile:", profileError);
-                // Fahre trotzdem fort - User-Profil ist nicht kritisch für Login
             }
 
-            // Überprüfe Spotify-Verbindung
             try {
                 const userDoc = await getDoc(doc(firestore, "spotifyTokens", user.uid));
 
                 if (userDoc.exists() && userDoc.data().accessToken) {
-                    // Spotify ist verbunden → zur Hauptapp
+                    const shouldAutoEnable = await AsyncStorage.getItem('autoEnableBackground');
+                    if (shouldAutoEnable === 'true') {
+                        try {
+                            await startBackgroundLocationTracking(user.uid);
+                        } catch (bgError) {
+                            console.log('Background location setup will be prompted later');
+                        }
+                    }
+
                     router.replace("/(tabs)/mapview");
                 } else {
-                    // Spotify-Verbindung erforderlich
                     router.replace("/spotify-auth");
                 }
             } catch (spotifyError) {
                 console.error("Error checking Spotify tokens:", spotifyError);
-                // Fallback: Gehe trotzdem zur Spotify-Verbindung
                 router.replace("/spotify-auth");
             }
         } catch (error) {
@@ -305,10 +310,13 @@ export default function Login() {
                                         <Ionicons name="share" size={16} color="#F59E0B" />
                                         <Text style={styles.featureText}>Playlisten teilen</Text>
                                     </View>
+                                    <View style={styles.featureItem}>
+                                        <Ionicons name="notifications" size={16} color="#EF4444" />
+                                        <Text style={styles.featureText}>Background Benachrichtigungen</Text>
+                                    </View>
                                 </View>
                             </View>
 
-                            {/* Bottom Spacing */}
                             <View style={styles.bottomSpacing} />
                         </View>
                     </View>
@@ -319,7 +327,6 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-    // Container & Layout
     container: {
         flex: 1,
         backgroundColor: '#F9FAFB',
@@ -330,8 +337,6 @@ const styles = StyleSheet.create({
     scrollContainer: {
         flex: 1,
     },
-
-    // Loading Container
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
@@ -347,8 +352,6 @@ const styles = StyleSheet.create({
         color: '#6B7280',
         textAlign: 'center',
     },
-
-    // Header - Kompakter
     header: {
         paddingTop: 20,
         paddingBottom: 20,
@@ -382,16 +385,12 @@ const styles = StyleSheet.create({
         fontStyle: 'italic',
         lineHeight: 18,
     },
-
-    // Main Content
     mainContent: {
         flex: 1,
         paddingHorizontal: 20,
         paddingTop: 20,
         paddingBottom: 20,
     },
-
-    // Auth Card
     authCard: {
         backgroundColor: '#FFFFFF',
         borderRadius: 12,
@@ -419,8 +418,6 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         lineHeight: 20,
     },
-
-    // Input Section
     inputSection: {
         marginBottom: 24,
     },
@@ -444,8 +441,6 @@ const styles = StyleSheet.create({
         color: '#1F2937',
         height: '100%',
     },
-
-    // Error
     errorContainer: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -460,8 +455,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         flex: 1,
     },
-
-    // Action Section
     actionSection: {
         gap: 12,
     },
@@ -498,8 +491,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         textAlign: 'center',
     },
-
-    // Features Section - Kompakter
     featuresSection: {
         backgroundColor: '#FFFFFF',
         borderRadius: 12,
@@ -530,8 +521,6 @@ const styles = StyleSheet.create({
         color: '#4B5563',
         fontWeight: '500',
     },
-
-    // Bottom Spacing
     bottomSpacing: {
         height: 40,
     },

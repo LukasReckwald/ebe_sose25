@@ -20,6 +20,8 @@ import {
     clearSpotifyTokens,
     SpotifyTokens
 } from '@/utils/spotifyToken';
+import BackgroundLocationSettings from '@/components/BackgroundLocationSettings';
+import { PermissionManager } from '@/components/PermissionManager';
 
 export default function ProfileScreen() {
     const [user, setUser] = useState(null);
@@ -68,11 +70,9 @@ export default function ProfileScreen() {
 
     const loadSpotifyStats = async () => {
         try {
-            // Lade Playlisten für Statistiken
             const playlistsData = await spotifyAPICall('/me/playlists?limit=50');
             const totalPlaylists = playlistsData.total;
 
-            // Lade Top Artists (falls verfügbar)
             let topArtist = null;
             try {
                 const topArtistsData = await spotifyAPICall('/me/top/artists?limit=1&time_range=medium_term');
@@ -81,7 +81,6 @@ export default function ProfileScreen() {
                 // Top Artists nicht verfügbar
             }
 
-            // Lade Currently Playing
             let currentTrack = null;
             try {
                 const currentData = await spotifyAPICall('/me/player/currently-playing');
@@ -259,6 +258,18 @@ export default function ProfileScreen() {
                     </View>
                 )}
 
+                {/* Background Location Settings */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>Erweiterte Funktionen</Text>
+                    <BackgroundLocationSettings />
+                </View>
+
+                {/* Permission Manager - nur im Dev Mode oder bei Problemen */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>Berechtigungen</Text>
+                    <PermissionManager />
+                </View>
+
                 {/* Account Aktionen */}
                 <View style={styles.section}>
                     <Text style={styles.sectionLabel}>Account</Text>
@@ -285,6 +296,7 @@ export default function ProfileScreen() {
                     <View style={styles.infoCard}>
                         <Text style={styles.infoText}>Diese App verbindet deine Spotify-Playlisten mit Standorten.</Text>
                         <Text style={styles.infoText}>Erstelle Geo-Playlisten und lass Musik automatisch starten!</Text>
+                        <Text style={styles.infoText}>Mit Background Location erhältst du Benachrichtigungen auch wenn die App geschlossen ist.</Text>
                         <Text style={styles.versionText}>Version 1.0.0</Text>
                     </View>
                 </View>
@@ -297,7 +309,6 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-    // Container & Layout
     container: {
         flex: 1,
         backgroundColor: '#F9FAFB',
@@ -306,8 +317,6 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingHorizontal: 20,
     },
-
-    // Header
     header: {
         paddingHorizontal: 20,
         paddingVertical: 16,
@@ -321,8 +330,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#4B5563',
     },
-
-    // Profile Cards
     profileCard: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -397,8 +404,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
     },
-
-    // Sections
     section: {
         marginBottom: 32,
         marginTop: 16,
@@ -409,8 +414,6 @@ const styles = StyleSheet.create({
         color: '#4B5563',
         marginBottom: 16,
     },
-
-    // Statistics
     statsContainer: {
         gap: 12,
     },
@@ -458,8 +461,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         flex: 1,
     },
-
-    // Actions
     actionContainer: {
         backgroundColor: '#FFFFFF',
         borderRadius: 12,
@@ -490,8 +491,6 @@ const styles = StyleSheet.create({
     logoutButtonText: {
         color: '#DC2626',
     },
-
-    // Info Card
     infoCard: {
         backgroundColor: '#FFFFFF',
         padding: 16,
@@ -514,8 +513,6 @@ const styles = StyleSheet.create({
         fontStyle: 'italic',
         marginTop: 8,
     },
-
-    // Loading & Center
     center: {
         flex: 1,
         justifyContent: 'center',

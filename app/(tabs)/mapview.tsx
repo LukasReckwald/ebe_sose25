@@ -26,6 +26,7 @@ import { useLocationTracking } from '@/hooks/useLocationTracking';
 import { useGeoPlaylistData } from '@/hooks/useGeoPlaylistData';
 import { useSpotifyAPI } from '@/hooks/useSpotifyAPI';
 import { useSpotifySync } from '@/hooks/useSpotifySync';
+import { useBackgroundLocation } from '@/hooks/useBackgroundLocation';
 
 import GeoPlaylistMapManager from '@/components/map/GeoPlaylistMapManager';
 import { CreateGeoPlaylistModal } from '@/components/map/CreateGeoPlaylistModal';
@@ -39,6 +40,7 @@ export default function GeoPlaylistMap() {
     // Location Hooks
     const { location, devMode, fakeLocation, setDevMode, setFakeLocation } = useMapLocation();
     const { userLocation } = useLocationTracking();
+    const { isBackgroundEnabled, enableBackgroundLocation } = useBackgroundLocation();
 
     // Geo-Playlist Data Hook
     const {
@@ -85,6 +87,35 @@ export default function GeoPlaylistMap() {
     useEffect(() => {
         initializeApp();
     }, []);
+
+    // Background Location
+    useEffect(() => {
+        if (geoPlaylists.length > 0 && !isBackgroundEnabled && auth.currentUser) {
+            const timer = setTimeout(() => {
+                Alert.alert(
+                    'Background Geo-Playlists aktivieren?',
+                    'Möchtest du Benachrichtigungen erhalten wenn Geo-Playlists verfügbar sind, auch wenn die App geschlossen ist?',
+                    [
+                        { text: 'Später', style: 'cancel' },
+                        {
+                            text: 'Aktivieren',
+                            onPress: async () => {
+                                const success = await enableBackgroundLocation();
+                                if (success) {
+                                    Alert.alert(
+                                        'Aktiviert!',
+                                        'Du erhältst nun Benachrichtigungen für Geo-Playlists im Hintergrund.'
+                                    );
+                                }
+                            }
+                        }
+                    ]
+                );
+            }, 5000);
+
+            return () => clearTimeout(timer);
+        }
+    }, [geoPlaylists.length, isBackgroundEnabled]);
 
     useEffect(() => {
         let interval: number;
@@ -256,7 +287,6 @@ export default function GeoPlaylistMap() {
         const playlist = geoPlaylists.find(p => p.id === id);
         if (!playlist) return;
 
-        // Handle shared playlists without location
         if (playlist.isShared && !playlist.location) {
             if (!location) {
                 Alert.alert("Standort erforderlich", "Bitte warte bis dein Standort geladen wurde.");
