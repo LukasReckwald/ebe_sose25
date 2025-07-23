@@ -7,7 +7,9 @@ interface DevModeControlsProps {
     fakeLocation: any;
     setFakeLocation: (location: any) => void;
     geoPlaylists: any[];
+    activeGeoPlaylists: string[];
     location: any;
+    currentTrack: any;
 }
 
 export default function DevModeControls({
@@ -16,7 +18,9 @@ export default function DevModeControls({
                                             fakeLocation,
                                             setFakeLocation,
                                             geoPlaylists,
-                                            location
+                                            activeGeoPlaylists,
+                                            location,
+                                            currentTrack
                                         }: DevModeControlsProps) {
     const getDistance = (point1: any, point2: any) => {
         const R = 6371000;
@@ -33,22 +37,40 @@ export default function DevModeControls({
         return R * c;
     };
 
+    const handleFakePositionToggle = () => {
+        if (mapMode === "fake-position") {
+            setMapMode("normal");
+        } else {
+            setMapMode("fake-position");
+            Alert.alert("Fake Position Modus", "Tippe auf die Karte um deine Position zu setzen");
+        }
+    };
+
+    const handleResetFakeLocation = () => {
+        setFakeLocation(null);
+        setMapMode("normal");
+        Alert.alert("Fake Position gelöscht");
+    };
+
     return (
-        <>
+        <View style={styles.devModeMainContainer}>
             {/* Debug Info */}
             <View style={styles.debugContainer}>
                 <Text style={styles.debugTitle}>🐛 Debug Info</Text>
                 <Text style={styles.debugText}>Geo-Playlisten: {geoPlaylists.length}</Text>
+                <Text style={styles.debugText}>Aktive Zonen: {activeGeoPlaylists.length}</Text>
                 <Text style={styles.debugText}>
                     Position: {fakeLocation ? "Fake" : "Real"}
+                </Text>
+                <Text style={styles.debugText}>
+                    Current Track: {currentTrack ? "Yes" : "No"}
                 </Text>
                 {geoPlaylists.length > 0 && (
                     <>
                         <Text style={styles.debugText}>Nächste Playlist:</Text>
                         {geoPlaylists.slice(0, 1).map(playlist => {
                             const currentPos = fakeLocation || location;
-                            const distance = currentPos && playlist.location ?
-                                getDistance(currentPos, playlist.location) : 0;
+                            const distance = currentPos && playlist.location ? getDistance(currentPos, playlist.location) : 0;
                             return (
                                 <Text key={playlist.id} style={styles.debugText}>
                                     "{playlist.name}": {distance.toFixed(0)}m
@@ -60,18 +82,11 @@ export default function DevModeControls({
             </View>
 
             {/* Dev Mode Controls */}
-            <View style={styles.devModeContainer}>
+            <View style={styles.devModeControlsContainer}>
                 <Text style={styles.devModeTitle}>🛠️ Dev-Mode</Text>
                 <TouchableOpacity
                     style={[styles.devButton, mapMode === "fake-position" && styles.devButtonActive]}
-                    onPress={() => {
-                        if (mapMode === "fake-position") {
-                            setMapMode("normal");
-                        } else {
-                            setMapMode("fake-position");
-                            Alert.alert("Fake Position Modus", "Tippe auf die Karte um deine Position zu setzen");
-                        }
-                    }}
+                    onPress={handleFakePositionToggle}
                 >
                     <Text style={styles.devButtonText}>
                         {mapMode === "fake-position" ? "Abbrechen" : "Fake Position"}
@@ -81,30 +96,35 @@ export default function DevModeControls({
                 {fakeLocation && (
                     <TouchableOpacity
                         style={[styles.devButton, styles.devButtonSecondary]}
-                        onPress={() => {
-                            setFakeLocation(null);
-                            setMapMode("normal");
-                            Alert.alert("Fake Position gelöscht");
-                        }}
+                        onPress={handleResetFakeLocation}
                     >
                         <Text style={styles.devButtonText}>Position löschen</Text>
                     </TouchableOpacity>
                 )}
             </View>
-        </>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    debugContainer: {
+    devModeMainContainer: {
         position: "absolute",
-        top: 140,
+        top: 190,
         left: 20,
+        right: 20,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+        gap: 16,
+        zIndex: 10,
+    },
+    debugContainer: {
         backgroundColor: "rgba(0, 0, 0, 0.8)",
         padding: 12,
         borderRadius: 8,
         minWidth: 200,
         maxWidth: 250,
+        flex: 1,
     },
     debugTitle: {
         color: "#10B981",
@@ -117,10 +137,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         marginBottom: 2,
     },
-    devModeContainer: {
-        position: "absolute",
-        top: 20,
-        right: 20,
+    devModeControlsContainer: {
         backgroundColor: "white",
         padding: 16,
         borderRadius: 12,

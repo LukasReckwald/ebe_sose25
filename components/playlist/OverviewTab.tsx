@@ -5,8 +5,8 @@ import GeoPlaylistCard from '../GeoPlaylistCard';
 import PlaylistGrid from './PlaylistGrid';
 
 interface OverviewTabProps {
-    geoPlaylists?: any[]; // Optional: all geo playlists (for consistency with GeoPlaylistMapManager)
-    activeGeoPlaylists: any[]; // Array of active GeoPlaylist objects (your current structure)
+    geoPlaylists?: any[];
+    activeGeoPlaylists: any[];
     playlists: any[];
     currentTrack: any;
     onPlaylistPress: (playlist: any) => void;
@@ -32,9 +32,9 @@ export default function OverviewTab({
             {activeGeoPlaylistObjects.length > 0 && (
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionLabel}>🎵 Aktive Geo-Playlisten</Text>
+                        <Text style={styles.sectionLabel}>Aktive Geo-Playlisten</Text>
                         <Text style={styles.sectionSubtitle}>
-                            Du bist im Radius - Songs werden automatisch hinzugefügt
+                            Du bist im Radius dieser Geo-Playlisten
                         </Text>
                     </View>
 
@@ -59,6 +59,7 @@ export default function OverviewTab({
                     })}
 
                     {/* Info-Text für Add Current Button */}
+                    {currentTrack && (
                     <View style={styles.infoContainer}>
                         <View style={styles.infoIcon}>
                             <Ionicons name="information-circle" size={16} color="#6B7280" />
@@ -67,14 +68,15 @@ export default function OverviewTab({
                             Tipp: Mit dem <Ionicons name="add-circle" size={14} color="#10B981" /> Button fügst du den aktuell spielenden Song zu deiner Geo-Playlist hinzu.
                         </Text>
                     </View>
+                    )}
                 </View>
             )}
 
-            {/* Show message when no active geo playlists */}
+            {/* Message wenn keine Geo-Playlist in der Nähe */}
             {activeGeoPlaylistObjects.length === 0 && (
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionLabel}>🎵 Aktive Geo-Playlisten</Text>
+                        <Text style={styles.sectionLabel}>Aktive Geo-Playlisten</Text>
                         <Text style={styles.sectionSubtitle}>
                             Keine aktiven Geo-Playlisten in deiner Nähe
                         </Text>
@@ -82,16 +84,19 @@ export default function OverviewTab({
 
                     <View style={styles.emptyState}>
                         <Text style={styles.emptyStateText}>
-                            📍 Gehe zu einem Ort mit einer aktiven Geo-Playlist oder aktiviere eine vorhandene Playlist in den Einstellungen
+                            <Ionicons name="location" size={14} color="#6B7280" /> Gehe zu einem Ort mit einer aktiven Geo-Playlist oder aktiviere eine vorhandene Playlist in den Einstellungen
                         </Text>
                     </View>
                 </View>
             )}
 
-            {/* Deine Playlists */}
+            {/* Meine Spotify Playlists */}
             <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionLabel}>Deine Spotify Playlists</Text>
+
+                    <Text style={styles.sectionLabel}>
+                        <Ionicons name="person" size={20} color="#3B82F6" /> Meine Spotify Playlisten
+                    </Text>
                     <Text style={styles.sectionSubtitle}>
                         Tippe auf eine Playlist für Details
                     </Text>

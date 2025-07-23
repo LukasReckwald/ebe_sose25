@@ -5,17 +5,21 @@ import { Ionicons } from '@expo/vector-icons';
 interface MapControlsProps {
     onCenterMap: () => void;
     onShowPlaylists: () => void;
+    onShowInvitations: () => void;
     onCreateNew: () => void;
     devMode: boolean;
     onToggleDevMode: (enabled: boolean) => void;
+    onResetFakeLocation?: () => void;
 }
 
 export default function MapControls({
                                         onCenterMap,
                                         onShowPlaylists,
+                                        onShowInvitations,
                                         onCreateNew,
                                         devMode,
-                                        onToggleDevMode
+                                        onToggleDevMode,
+                                        onResetFakeLocation
                                     }: MapControlsProps) {
     const handleDevModeToggle = () => {
         const newDevMode = !devMode;
@@ -24,8 +28,16 @@ export default function MapControls({
         if (newDevMode) {
             Alert.alert("Dev-Mode aktiviert", "Du kannst jetzt deine Position faken und Debug-Infos sehen!");
         } else {
+            if (onResetFakeLocation) {
+                onResetFakeLocation();
+            }
             Alert.alert("Dev-Mode deaktiviert");
         }
+    };
+
+    const handleCreateNew = () => {
+        Alert.alert("Standort wählen", "Tippe auf die Karte um einen Standort für deine neue Geo-Playlist zu wählen");
+        onCreateNew();
     };
 
     return (
@@ -38,6 +50,13 @@ export default function MapControls({
 
                 <TouchableOpacity
                     style={[styles.fab, styles.fabSecondary]}
+                    onPress={onShowInvitations}
+                >
+                    <Ionicons name="mail" size={24} color="white" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.fab, styles.fabSecondary]}
                     onPress={onShowPlaylists}
                 >
                     <Ionicons name="list" size={24} color="white" />
@@ -45,7 +64,7 @@ export default function MapControls({
 
                 <TouchableOpacity
                     style={[styles.fab, styles.fabPrimary]}
-                    onPress={onCreateNew}
+                    onPress={handleCreateNew}
                 >
                     <Ionicons name="add" size={24} color="white" />
                 </TouchableOpacity>

@@ -60,16 +60,6 @@ export default function PlaylistDetailModal({
                                     <Ionicons name="play" size={16} color="white" />
                                     <Text style={styles.playButtonText}>Abspielen</Text>
                                 </TouchableOpacity>
-
-                                {currentTrack && (
-                                    <TouchableOpacity
-                                        onPress={() => onAddCurrentTrack(playlist)}
-                                        style={styles.addCurrentButton}
-                                    >
-                                        <Ionicons name="add" size={16} color="white" />
-                                        <Text style={styles.addCurrentButtonText}>Aktueller Song</Text>
-                                    </TouchableOpacity>
-                                )}
                             </View>
                         </View>
                     </View>
@@ -162,20 +152,6 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     playButtonText: {
-        color: '#FFFFFF',
-        fontSize: 14,
-        fontWeight: '500',
-    },
-    addCurrentButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#10B981',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 8,
-        gap: 6,
-    },
-    addCurrentButtonText: {
         color: '#FFFFFF',
         fontSize: 14,
         fontWeight: '500',

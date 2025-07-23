@@ -1,54 +1,54 @@
 ﻿import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import NowPlayingBar from '@/components/NowPlayingBar';
 
 interface MapStatusBannerProps {
     activeGeoPlaylists: string[];
     currentTrack: any;
     isPlaying: boolean;
+    selectedPlaylist: any;
+    onTogglePlayPause: () => void;
+    onAddCurrentTrack: () => void;
 }
 
 export default function MapStatusBanner({
                                             activeGeoPlaylists,
                                             currentTrack,
-                                            isPlaying
+                                            isPlaying,
+                                            selectedPlaylist,
+                                            onTogglePlayPause,
+                                            onAddCurrentTrack
                                         }: MapStatusBannerProps) {
-    if (activeGeoPlaylists.length === 0) return null;
-
     return (
         <>
-            {/* Status Banner für aktive Playlisten */}
-            <View style={styles.statusBanner}>
-                <View style={styles.statusContent}>
-                    <Ionicons name="location" size={20} color="white" />
-                    <Text style={styles.statusText}>
-                        {activeGeoPlaylists.length} Geo-Playlist{activeGeoPlaylists.length > 1 ? 's' : ''} aktiv
-                    </Text>
-                </View>
-            </View>
+            {(currentTrack || activeGeoPlaylists.length > 0) && (
+                <View style={styles.bannerContainer}>
+                    {/* Current Track Banner */}
+                    {currentTrack && (
+                        <View style={styles.currentTrackBanner}>
+                            <NowPlayingBar
+                                currentTrack={currentTrack}
+                                isPlaying={isPlaying}
+                                hasActiveOptions={activeGeoPlaylists.length > 0 || selectedPlaylist}
+                                onTogglePlayPause={onTogglePlayPause}
+                                onAddCurrentTrack={onAddCurrentTrack}
+                                position="top"
+                            />
+                        </View>
+                    )}
 
-            {/* Current Track Banner */}
-            {currentTrack && (
-                <View style={styles.currentTrackBanner}>
-                    <Image
-                        source={{ uri: currentTrack.album.images[0]?.url }}
-                        style={styles.currentTrackImage}
-                    />
-                    <View style={styles.currentTrackInfo}>
-                        <Text style={styles.currentTrackTitle} numberOfLines={1}>
-                            {currentTrack.name}
-                        </Text>
-                        <Text style={styles.currentTrackArtist} numberOfLines={1}>
-                            {currentTrack.artists.map((a: any) => a.name).join(', ')}
-                        </Text>
-                    </View>
-                    <View style={styles.playingIndicator}>
-                        <Ionicons
-                            name={isPlaying ? "musical-notes" : "pause"}
-                            size={16}
-                            color="#10B981"
-                        />
-                    </View>
+                    {/* Status Banner für aktive Playlisten */}
+                    {activeGeoPlaylists.length > 0 && (
+                        <View style={styles.statusBanner}>
+                            <View style={styles.geoIndicator}>
+                                <Ionicons name="location" size={18} color="#10B981" />
+                                <Text style={styles.geoIndicatorText}>
+                                    {activeGeoPlaylists.length} aktive Geo-Playlist{activeGeoPlaylists.length > 1 ? 's' : ''}
+                                </Text>
+                            </View>
+                        </View>
+                    )}
                 </View>
             )}
         </>
@@ -56,40 +56,15 @@ export default function MapStatusBanner({
 }
 
 const styles = StyleSheet.create({
-    statusBanner: {
+    bannerContainer: {
         position: "absolute",
-        top: 20,
-        left: 20,
-        right: 20,
-        backgroundColor: "#10B981",
-        borderRadius: 12,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 5,
-    },
-    statusContent: {
-        flexDirection: "row",
+        top: 40,
+        left: 0,
+        right: 0,
         alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
         gap: 8,
     },
-    statusText: {
-        color: "white",
-        fontSize: 16,
-        fontWeight: "600",
-    },
-    currentTrackBanner: {
-        position: "absolute",
-        top: 80,
-        left: 20,
-        right: 20,
-        backgroundColor: "#1F2937",
-        padding: 12,
-        borderRadius: 12,
-        flexDirection: "row",
+    statusBanner: {
         alignItems: "center",
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
@@ -97,31 +72,23 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 5,
     },
-    currentTrackImage: {
-        width: 40,
-        height: 40,
-        borderRadius: 6,
-        marginRight: 12,
+    geoIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#ECFDF5',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#10B981',
     },
-    currentTrackInfo: {
-        flex: 1,
-    },
-    currentTrackTitle: {
-        color: "white",
+    geoIndicatorText: {
         fontSize: 14,
-        fontWeight: "600",
-        marginBottom: 2,
+        color: '#10B981',
+        marginLeft: 6,
+        fontWeight: '600',
     },
-    currentTrackArtist: {
-        color: "#9CA3AF",
-        fontSize: 12,
-    },
-    playingIndicator: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: "rgba(16, 185, 129, 0.2)",
-        alignItems: "center",
-        justifyContent: "center",
+    currentTrackBanner: {
+        alignSelf: "stretch",
     },
 });
