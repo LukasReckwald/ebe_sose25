@@ -131,18 +131,33 @@ export const CreateGeoPlaylistModal: React.FC<CreateGeoPlaylistModalProps> = ({
     };
 
     return (
-        <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+        <Modal
+            visible={visible}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            onRequestClose={handleClose}
+        >
             <SafeAreaView style={styles.modalContainer}>
                 <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Neue Geo-Playlist</Text>
                     <TouchableOpacity onPress={handleClose}>
                         <Ionicons name="close" size={24} color="#6B7280" />
                     </TouchableOpacity>
+                    <Text style={styles.modalTitle}>Neue Geo-Playlist</Text>
+                    <View style={{ width: 24 }} />
                 </View>
 
-                <ScrollView style={styles.modalContent}>
-                    <View style={styles.inputSection}>
-                        <Text style={styles.inputLabel}>Name der Geo-Playlist</Text>
+                <ScrollView
+                    style={styles.modalContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={styles.scrollContainer}
+                >
+                    {/* Name Input Section */}
+                    <View style={styles.inputCard}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="create" size={18} color="#3B82F6" />
+                            <Text style={styles.sectionTitle}>Name der Geo-Playlist</Text>
+                        </View>
                         <TextInput
                             value={newPlaylistName}
                             onChangeText={setNewPlaylistName}
@@ -152,94 +167,167 @@ export const CreateGeoPlaylistModal: React.FC<CreateGeoPlaylistModalProps> = ({
                         />
                     </View>
 
-                    <View style={styles.inputSection}>
-                        <Text style={styles.inputLabel}>Radius: {radius}m</Text>
+                    {/* Radius Section */}
+                    <View style={styles.inputCard}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="location" size={18} color="#10B981" />
+                            <Text style={styles.sectionTitle}>Radius: {radius}m</Text>
+                        </View>
+                        <Text style={styles.sectionSubtitle}>
+                            Bestimme den Aktivierungsbereich deiner Geo-Playlist
+                        </Text>
                         <Slider
                             minimumValue={10}
                             maximumValue={500}
                             step={10}
                             value={radius}
                             onValueChange={setRadius}
-                            minimumTrackTintColor="#3B82F6"
+                            minimumTrackTintColor="#10B981"
                             maximumTrackTintColor="#E5E7EB"
-                            thumbTintColor="#3B82F6"
+                            thumbTintColor="#10B981"
+                            style={styles.slider}
                         />
                     </View>
 
-                    <View style={styles.inputSection}>
-                        <Text style={styles.inputLabel}>Spotify-Playlist</Text>
+                    {/* Spotify Playlist Section */}
+                    <View style={styles.sectionHeader}>
+                        <Ionicons name="musical-notes" size={18} color="#1DB954" />
+                        <Text style={styles.modalSectionTitle}>Spotify-Playlist</Text>
+                    </View>
+                    <Text style={styles.modalSectionSubtitle}>
+                        Erstelle eine neue Playlist oder wähle eine existierende
+                    </Text>
 
-                        {/* Option: Neue Playlist erstellen */}
-                        <View style={styles.optionContainer}>
-                            <View style={styles.optionHeader}>
-                                <Ionicons name="add-circle" size={20} color="#10B981" />
-                                <Text style={styles.optionTitle}>Neue Spotify-Playlist erstellen</Text>
-                                <Switch
-                                    value={createNewSpotifyPlaylist}
-                                    onValueChange={setCreateNewSpotifyPlaylist}
-                                    trackColor={{ false: '#E5E7EB', true: '#10B981' }}
-                                    thumbColor={createNewSpotifyPlaylist ? '#10B981' : '#9CA3AF'}
-                                />
+                    {/* Option: Neue Playlist erstellen */}
+                    <TouchableOpacity
+                        style={[
+                            styles.optionCard,
+                            createNewSpotifyPlaylist && styles.optionCardSelected
+                        ]}
+                        onPress={() => setCreateNewSpotifyPlaylist(!createNewSpotifyPlaylist)}
+                    >
+                        <View style={styles.imageContainer}>
+                            <View style={[styles.optionIcon, { backgroundColor: '#10B981' }]}>
+                                <Ionicons name="add-circle" size={24} color="white" />
                             </View>
-                            {createNewSpotifyPlaylist && (
-                                <Text style={styles.optionDescription}>
-                                    Eine neue Spotify-Playlist wird mit dem Namen "{newPlaylistName || 'Geo-Playlist'}" erstellt.
-                                </Text>
-                            )}
                         </View>
 
-                        {/* Option: Existierende Playlist wählen */}
-                        {!createNewSpotifyPlaylist && (
-                            <View style={styles.optionContainer}>
-                                <View style={styles.optionHeader}>
-                                    <Ionicons name="list" size={20} color="#3B82F6" />
-                                    <Text style={styles.optionTitle}>Existierende Playlist wählen</Text>
+                        <View style={styles.cardInfo}>
+                            <Text style={styles.cardName}>Neue Spotify-Playlist erstellen</Text>
+                            <Text style={styles.cardMeta}>
+                                {createNewSpotifyPlaylist
+                                    ? `Erstelle "${newPlaylistName || 'Geo-Playlist'}"`
+                                    : 'Eine neue Playlist wird automatisch erstellt'
+                                }
+                            </Text>
+                        </View>
+
+                        <View style={styles.cardActions}>
+                            <Switch
+                                value={createNewSpotifyPlaylist}
+                                onValueChange={setCreateNewSpotifyPlaylist}
+                                trackColor={{ false: '#E5E7EB', true: '#10B981' }}
+                                thumbColor={createNewSpotifyPlaylist ? '#10B981' : '#9CA3AF'}
+                            />
+                        </View>
+                    </TouchableOpacity>
+
+                    {/* Selected Playlist Preview */}
+                    {!createNewSpotifyPlaylist && selectedSpotifyPlaylist && (
+                        <View style={styles.selectedPlaylistCard}>
+                            <View style={styles.imageContainer}>
+                                <Image
+                                    source={{
+                                        uri: selectedSpotifyPlaylist.images?.[0]?.url || 'https://via.placeholder.com/60x60/E5E7EB/9CA3AF?text=♪'
+                                    }}
+                                    style={styles.cardImage}
+                                />
+                            </View>
+                            <View style={styles.cardInfo}>
+                                <Text style={styles.cardName}>{selectedSpotifyPlaylist.name}</Text>
+                                <Text style={styles.cardMeta}>
+                                    <Ionicons name="musical-notes" size={12} color="#1DB954" /> {selectedSpotifyPlaylist.tracks.total} Songs
+                                </Text>
+                            </View>
+                            <View style={styles.cardActions}>
+                                <View style={styles.selectedBadge}>
+                                    <Ionicons name="checkmark-circle" size={20} color="#10B981" />
                                 </View>
+                            </View>
+                        </View>
+                    )}
 
-                                {selectedSpotifyPlaylist && (
-                                    <View style={styles.selectedPlaylistCard}>
-                                        <Image
-                                            source={{ uri: selectedSpotifyPlaylist.images?.[0]?.url || 'https://via.placeholder.com/40' }}
-                                            style={styles.selectedPlaylistImage}
-                                        />
-                                        <Text style={styles.selectedPlaylistName}>{selectedSpotifyPlaylist.name}</Text>
-                                        <Text style={styles.selectedPlaylistTracks}>
-                                            {selectedSpotifyPlaylist.tracks.total} Songs
-                                        </Text>
-                                    </View>
-                                )}
-
-                                <ScrollView
-                                    style={styles.spotifyPlaylistList}
-                                    showsVerticalScrollIndicator={false}
-                                >
-                                    {spotifyPlaylists.map((playlist) => (
+                    {/* Spotify Playlist List */}
+                    {!createNewSpotifyPlaylist && (
+                        <>
+                            <Text style={styles.playlistSectionTitle}>Existierende Playlists wählen:</Text>
+                            <View style={styles.playlistContainer}>
+                                {spotifyPlaylists && spotifyPlaylists.length > 0 ? (
+                                    spotifyPlaylists.map((playlist) => (
                                         <TouchableOpacity
                                             key={playlist.id}
                                             style={[
-                                                styles.spotifyPlaylistItem,
-                                                selectedSpotifyPlaylist?.id === playlist.id && styles.spotifyPlaylistItemSelected
+                                                styles.playlistCard,
+                                                selectedSpotifyPlaylist?.id === playlist.id && styles.playlistCardSelected
                                             ]}
                                             onPress={() => setSelectedSpotifyPlaylist(playlist)}
                                         >
-                                            <Image
-                                                source={{ uri: playlist.images?.[0]?.url || 'https://via.placeholder.com/40' }}
-                                                style={styles.spotifyPlaylistImage}
-                                            />
-                                            <View style={styles.playlistTextContainer}>
-                                                <Text style={styles.spotifyPlaylistName}>{playlist.name}</Text>
-                                                <Text style={styles.spotifyPlaylistTracks}>{playlist.tracks.total} Songs</Text>
+                                            <View style={styles.imageContainer}>
+                                                <Image
+                                                    source={{
+                                                        uri: playlist.images?.[0]?.url || 'https://via.placeholder.com/60x60/E5E7EB/9CA3AF?text=♪'
+                                                    }}
+                                                    style={styles.cardImage}
+                                                />
                                             </View>
-                                            {selectedSpotifyPlaylist?.id === playlist.id && (
-                                                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                                            )}
+
+                                            <View style={styles.cardInfo}>
+                                                <Text style={styles.cardName}>{playlist.name}</Text>
+                                                <Text style={styles.cardMeta}>
+                                                    <Ionicons name="musical-notes" size={12} color="#1DB954" /> {playlist.tracks?.total || 0} Songs
+                                                </Text>
+                                            </View>
+
+                                            <View style={styles.cardActions}>
+                                                {selectedSpotifyPlaylist?.id === playlist.id ? (
+                                                    <View style={styles.selectedBadge}>
+                                                        <Ionicons name="checkmark-circle" size={22} color="#10B981" />
+                                                    </View>
+                                                ) : (
+                                                    <View style={styles.selectButton}>
+                                                        <Ionicons name="radio-button-off" size={22} color="#9CA3AF" />
+                                                    </View>
+                                                )}
+                                            </View>
                                         </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
+                                    ))
+                                ) : (
+                                    <View style={styles.emptyState}>
+                                        <Ionicons name="musical-notes-outline" size={48} color="#9CA3AF" />
+                                        <Text style={styles.emptyStateText}>Keine Spotify-Playlists verfügbar</Text>
+                                        <Text style={styles.emptyStateSubtext}>
+                                            Erstelle zunächst Playlists in Spotify oder wähle "Neue Playlist erstellen"
+                                        </Text>
+                                    </View>
+                                )}
                             </View>
-                        )}
+                        </>
+                    )}
+
+                    {/* Info Box */}
+                    <View style={styles.infoBox}>
+                        <Ionicons name="information-circle" size={16} color="#6B7280" />
+                        <Text style={styles.infoText}>
+                            Geo-Playlists werden automatisch aktiviert, wenn du dich im festgelegten Bereich befindest.
+                        </Text>
                     </View>
 
+                    {/* Bottom Spacing */}
+                    <View style={styles.bottomSpacing} />
+                </ScrollView>
+
+                {/* Fixed Create Button */}
+                <View style={styles.fixedButtonContainer}>
                     <TouchableOpacity
                         style={[
                             styles.createButton,
@@ -252,7 +340,7 @@ export const CreateGeoPlaylistModal: React.FC<CreateGeoPlaylistModalProps> = ({
                             {isCreating ? 'Erstelle...' : 'Geo-Playlist erstellen'}
                         </Text>
                     </TouchableOpacity>
-                </ScrollView>
+                </View>
             </SafeAreaView>
         </Modal>
     );
@@ -261,147 +349,261 @@ export const CreateGeoPlaylistModal: React.FC<CreateGeoPlaylistModalProps> = ({
 const styles = StyleSheet.create({
     modalContainer: {
         flex: 1,
-        backgroundColor: "#F9FAFB",
+        backgroundColor: '#F9FAFB',
     },
     modalHeader: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         padding: 20,
         borderBottomWidth: 1,
-        borderBottomColor: "#E5E7EB",
-        backgroundColor: "white",
+        borderBottomColor: '#E5E7EB',
+        backgroundColor: '#FFFFFF',
     },
     modalTitle: {
         fontSize: 20,
-        fontWeight: "600",
-        color: "#1F2937",
+        fontWeight: '600',
+        color: '#1F2937',
     },
     modalContent: {
         flex: 1,
-        padding: 20,
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 0,
     },
-    inputSection: {
-        marginBottom: 24,
+    scrollContainer: {
+        flexGrow: 1,
     },
-    inputLabel: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: "#1F2937",
+    inputCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
         marginBottom: 8,
     },
+    sectionTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1F2937',
+    },
+    modalSectionTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1F2937',
+    },
+    sectionSubtitle: {
+        fontSize: 14,
+        color: '#6B7280',
+        marginBottom: 12,
+        lineHeight: 20,
+    },
+    modalSectionSubtitle: {
+        fontSize: 14,
+        color: '#6B7280',
+        marginBottom: 16,
+        lineHeight: 20,
+    },
     textInput: {
-        backgroundColor: "white",
+        backgroundColor: '#F9FAFB',
         borderWidth: 1,
-        borderColor: "#E5E7EB",
+        borderColor: '#E5E7EB',
         borderRadius: 8,
         paddingHorizontal: 12,
         paddingVertical: 12,
         fontSize: 16,
-        color: "#1F2937",
+        color: '#1F2937',
     },
-    optionContainer: {
-        backgroundColor: "white",
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: "#E5E7EB",
-    },
-    optionHeader: {
-        flexDirection: "row",
-        alignItems: "center",
-        marginBottom: 8,
-    },
-    optionTitle: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: "#1F2937",
-        marginLeft: 8,
-        flex: 1,
-    },
-    optionDescription: {
-        fontSize: 14,
-        color: "#6B7280",
+    slider: {
+        height: 40,
         marginTop: 8,
-        fontStyle: "italic",
+    },
+    optionCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 12,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
+    optionCardSelected: {
+        borderColor: '#10B981',
+        backgroundColor: '#F0FDF4',
     },
     selectedPlaylistCard: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#EBF8FF",
-        padding: 12,
-        borderRadius: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#EBF8FF',
+        borderRadius: 12,
+        padding: 14,
         marginBottom: 12,
-        borderWidth: 1,
-        borderColor: "#3B82F6",
+        borderWidth: 2,
+        borderColor: '#3B82F6',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
     },
-    selectedPlaylistImage: {
-        width: 40,
-        height: 40,
-        borderRadius: 6,
+    playlistContainer: {
+        marginBottom: 20,
+    },
+    playlistCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 10,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
+    playlistCardSelected: {
+        borderColor: '#10B981',
+        backgroundColor: '#F0FDF4',
+    },
+    imageContainer: {
+        position: 'relative',
         marginRight: 12,
     },
-    selectedPlaylistName: {
-        fontSize: 14,
-        fontWeight: "600",
-        color: "#1F2937",
-        flex: 1,
-    },
-    selectedPlaylistTracks: {
-        fontSize: 12,
-        color: "#6B7280",
-    },
-    spotifyPlaylistList: {
-        maxHeight: 200,
-        backgroundColor: "#F9FAFB",
+    cardImage: {
+        width: 60,
+        height: 60,
         borderRadius: 8,
+        backgroundColor: '#E5E7EB',
+    },
+    optionIcon: {
+        width: 60,
+        height: 60,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cardInfo: {
+        flex: 1,
+        gap: 3,
+    },
+    cardName: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#1F2937',
+    },
+    cardMeta: {
+        fontSize: 13,
+        color: '#6B7280',
+        fontWeight: '500',
+    },
+    cardActions: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    selectedBadge: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    selectButton: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    playlistSectionTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 12,
+        marginTop: 8,
+    },
+    emptyState: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 40,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
         borderWidth: 1,
-        borderColor: "#E5E7EB",
+        borderColor: '#E5E7EB',
+        borderStyle: 'dashed',
     },
-    spotifyPlaylistItem: {
-        flexDirection: "row",
-        alignItems: "center",
+    emptyStateText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#6B7280',
+        marginTop: 12,
+        textAlign: 'center',
+    },
+    emptyStateSubtext: {
+        fontSize: 14,
+        color: '#9CA3AF',
+        marginTop: 4,
+        textAlign: 'center',
+        lineHeight: 20,
+    },
+    infoBox: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        backgroundColor: '#F3F4F6',
         padding: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: "#F3F4F6",
+        borderRadius: 8,
+        gap: 8,
+        marginBottom: 20,
     },
-    spotifyPlaylistItemSelected: {
-        backgroundColor: "#EBF8FF",
-    },
-    spotifyPlaylistImage: {
-        width: 40,
-        height: 40,
-        borderRadius: 6,
-        marginRight: 12,
-    },
-    playlistTextContainer: {
+    infoText: {
+        fontSize: 12,
+        color: '#6B7280',
+        lineHeight: 16,
         flex: 1,
     },
-    spotifyPlaylistName: {
-        fontSize: 14,
-        fontWeight: "500",
-        color: "#1F2937",
-        marginBottom: 2,
+    bottomSpacing: {
+        height: 100,
+        marginBottom: 20,
     },
-    spotifyPlaylistTracks: {
-        fontSize: 12,
-        color: "#6B7280",
+    fixedButtonContainer: {
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderTopWidth: 1,
+        borderTopColor: '#E5E7EB',
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
     },
     createButton: {
-        backgroundColor: "#3B82F6",
+        backgroundColor: '#3B82F6',
         padding: 16,
-        borderRadius: 8,
-        alignItems: "center",
-        marginTop: 20,
-        marginBottom: 40,
+        borderRadius: 12,
+        alignItems: 'center',
     },
     createButtonDisabled: {
-        backgroundColor: "#9CA3AF",
+        backgroundColor: '#9CA3AF',
+        elevation: 0,
+        shadowOpacity: 0,
     },
     createButtonText: {
-        color: "white",
+        color: 'white',
         fontSize: 16,
-        fontWeight: "600",
+        fontWeight: '600',
     },
 });
