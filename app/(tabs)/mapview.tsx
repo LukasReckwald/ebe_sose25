@@ -59,8 +59,8 @@ export default function GeoPlaylistMap() {
         refreshPlaylistCovers
     } = useSpotifySync(geoPlaylists);
 
-    // Spotify API Hook
-    const tokens = null;
+    // Spotify API Hook with proper tokens
+    const [tokens, setTokens] = useState(null);
     const {
         playlists,
         togglePlayPause,
@@ -84,6 +84,18 @@ export default function GeoPlaylistMap() {
 
     useEffect(() => {
         initializeApp();
+    }, []);
+
+    useEffect(() => {
+        const loadTokens = async () => {
+            try {
+                const validTokens = await getValidSpotifyTokens();
+                setTokens(validTokens);
+            } catch (error) {
+                console.error('Error loading Spotify tokens:', error);
+            }
+        };
+        loadTokens();
     }, []);
 
     useEffect(() => {
