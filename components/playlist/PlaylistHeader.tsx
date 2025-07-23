@@ -7,7 +7,7 @@ interface PlaylistHeaderProps {
     activeGeoPlaylists: any[];
 }
 
-export default function PlaylistHeader({ title = "Playlists", activeGeoPlaylists }: PlaylistHeaderProps) {
+export default function PlaylistHeader({ title = "Playlisten", activeGeoPlaylists }: PlaylistHeaderProps) {
     return (
         <View style={styles.header}>
             <Text style={styles.pageTitle}>{title}</Text>
@@ -15,7 +15,7 @@ export default function PlaylistHeader({ title = "Playlists", activeGeoPlaylists
                 <View style={styles.geoIndicator}>
                     <Ionicons name="location" size={16} color="#10B981" />
                     <Text style={styles.geoIndicatorText}>
-                        {activeGeoPlaylists.length} aktive Geo-Playlist{activeGeoPlaylists.length > 1 ? 's' : ''}
+                        {activeGeoPlaylists.length} aktive Geo-Playlist{activeGeoPlaylists.length > 1 ? 'en' : ''}
                     </Text>
                 </View>
             )}
