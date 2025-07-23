@@ -1,14 +1,22 @@
-﻿import React, { useState } from 'react';
+﻿import React, {useState} from 'react';
 import {
-    View, Text, Modal, ScrollView, TouchableOpacity,
-    TextInput, Alert, StyleSheet, Image, Switch
+    Alert,
+    Image,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {Ionicons} from '@expo/vector-icons';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import Slider from "@react-native-community/slider";
-import { auth } from '@/firebaseConfig';
-import { getFirestore, collection, addDoc } from 'firebase/firestore';
-import { getValidSpotifyTokens, spotifyAPICall } from '@/utils/spotifyToken';
+import {auth} from '@/firebaseConfig';
+import {addDoc, collection, getFirestore} from 'firebase/firestore';
+import {spotifyAPICall} from '@/utils/spotifyToken';
 
 interface CreateGeoPlaylistModalProps {
     visible: boolean;
@@ -47,7 +55,7 @@ export const CreateGeoPlaylistModal: React.FC<CreateGeoPlaylistModalProps> = ({
     const createSpotifyPlaylist = async (name: string) => {
         try {
             const profile = await spotifyAPICall('/me');
-            const playlistData = await spotifyAPICall(`/users/${profile.id}/playlists`, {
+            return await spotifyAPICall(`/users/${profile.id}/playlists`, {
                 method: 'POST',
                 body: JSON.stringify({
                     name: name,
@@ -55,7 +63,6 @@ export const CreateGeoPlaylistModal: React.FC<CreateGeoPlaylistModalProps> = ({
                     public: false
                 }),
             });
-            return playlistData;
         } catch (error) {
             console.error('Error creating Spotify playlist:', error);
             throw error;
