@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '@/firebaseConfig';
 import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, query, where, getDocs } from 'firebase/firestore';
-import { updatePlaylistImages, updateSinglePlaylistImage } from '@/utils/playlistImageUpdater';
+import { updatePlaylistImages} from '@/utils/playlistImageUpdater';
 
 interface GeoPlaylistMapManagerProps {
     visible: boolean;
@@ -46,8 +46,6 @@ export default function GeoPlaylistMapManager({
         setIsUpdatingImages(true);
         try {
             await updatePlaylistImages(auth.currentUser.uid);
-            // Hier könntest du ein Event auslösen, um die Parent-Komponente
-            // zu informieren, dass die Playlists neu geladen werden sollen
         } catch (error) {
             console.error('Error updating playlist images:', error);
         } finally {
@@ -75,7 +73,7 @@ export default function GeoPlaylistMapManager({
 
             const targetUser = querySnapshot.docs[0];
             const targetUserId = targetUser.id;
-            
+
             const invitation = {
                 from: auth.currentUser?.uid,
                 to: targetUserId,
@@ -122,13 +120,17 @@ export default function GeoPlaylistMapManager({
     };
 
     const handleDelete = (geoPlaylist: any) => {
+        const deleteMessage = geoPlaylist.isShared
+            ? `Möchtest du die geteilte Playlist "${geoPlaylist.name}" wirklich aus deiner Liste entfernen? Sie wird für andere Nutzer weiterhin verfügbar bleiben.`
+            : `Möchtest du "${geoPlaylist.name}" wirklich löschen?`;
+
         Alert.alert(
-            'Playlist löschen',
-            `Möchtest du "${geoPlaylist.name}" wirklich löschen?`,
+            geoPlaylist.isShared ? 'Geteilte Playlist entfernen' : 'Playlist löschen',
+            deleteMessage,
             [
                 { text: 'Abbrechen', style: 'cancel' },
                 {
-                    text: 'Löschen',
+                    text: geoPlaylist.isShared ? 'Entfernen' : 'Löschen',
                     style: 'destructive',
                     onPress: () => onDelete(geoPlaylist.id)
                 }
@@ -136,32 +138,91 @@ export default function GeoPlaylistMapManager({
         );
     };
 
-    const renderPlaylistActions = (geoPlaylist: any) => (
-        <View style={styles.allActions}>
-            <TouchableOpacity
-                style={styles.shareButton}
-                onPress={() => handleShare(geoPlaylist)}
-            >
-                <Ionicons name="share" size={16} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity
-                style={[styles.toggleButton, geoPlaylist.isActive && styles.toggleButtonActive]}
-                onPress={() => handleToggle(geoPlaylist)}
-            >
-                <Ionicons
-                    name={geoPlaylist.isActive ? "pause" : "play"}
-                    size={16}
-                    color="white"
-                />
-            </TouchableOpacity>
-            <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={() => handleDelete(geoPlaylist)}
-            >
-                <Ionicons name="trash" size={16} color="white" />
-            </TouchableOpacity>
-        </View>
-    );
+    const renderPlaylistCard = (geoPlaylist: any) => {
+        const isShared = geoPlaylist.isShared || false;
+
+        return (
+            <View key={geoPlaylist.id} style={[
+                styles.card,
+                isShared && styles.sharedCard
+            ]}>
+                <View style={styles.imageContainer}>
+                    <Image
+                        source={{
+                            uri: geoPlaylist.spotifyPlaylistImage || 'https://via.placeholder.com/80x80/E5E7EB/9CA3AF?text=♪'
+                        }}
+                        style={styles.image}
+                    />
+                    {isShared && (
+                        <View style={styles.sharedBadge}>
+                            <Ionicons name="people" size={12} color="white" />
+                        </View>
+                    )}
+                </View>
+
+                <View style={styles.info}>
+                    <View style={styles.nameRow}>
+                        <Text style={styles.name}>{geoPlaylist.name}</Text>
+                        {isShared && (
+                            <View style={styles.sharedIndicator}>
+                                <Ionicons name="share" size={12} color="#8B5CF6" />
+                                <Text style={styles.sharedText}>Geteilt</Text>
+                            </View>
+                        )}
+                    </View>
+
+                    <Text style={styles.meta}>
+                        <Ionicons name="location" size={14} color="#10B981" />
+                        {geoPlaylist.isActive ? 'Aktiv' : 'Inaktiv'} • {geoPlaylist.radius}m Radius
+                    </Text>
+
+                    <Text style={styles.spotifyName}>
+                        <Ionicons name="musical-notes" size={12} color="#6B7280" /> {geoPlaylist.spotifyPlaylistName}
+                    </Text>
+
+                    {isShared && geoPlaylist.fromUserEmail && (
+                        <Text style={styles.sharedFromText}>
+                            <Ionicons name="person" size={10} color="#8B5CF6" /> Von: {geoPlaylist.fromUserEmail}
+                        </Text>
+                    )}
+                </View>
+
+                <View style={styles.actions}>
+                    {/* Share-Button nur für eigene Playlisten */}
+                    {!isShared && (
+                        <TouchableOpacity
+                            style={styles.shareButton}
+                            onPress={() => handleShare(geoPlaylist)}
+                        >
+                            <Ionicons name="share" size={16} color="white" />
+                        </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                        style={[styles.toggleButton, geoPlaylist.isActive && styles.toggleButtonActive]}
+                        onPress={() => handleToggle(geoPlaylist)}
+                    >
+                        <Ionicons
+                            name={geoPlaylist.isActive ? "pause" : "play"}
+                            size={16}
+                            color="white"
+                        />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.deleteButton}
+                        onPress={() => handleDelete(geoPlaylist)}
+                    >
+                        <Ionicons name={isShared ? "remove-circle" : "trash"} size={16} color="white" />
+                    </TouchableOpacity>
+                </View>
+            </View>
+        );
+    };
+
+    // Kategorisiere Playlisten
+    const ownPlaylists = geoPlaylists.filter(p => !p.isShared);
+    const sharedPlaylists = geoPlaylists.filter(p => p.isShared);
+    const activeOwnPlaylists = ownPlaylists.filter(p => activeGeoPlaylists.includes(p.id));
+    const activeSharedPlaylists = sharedPlaylists.filter(p => activeGeoPlaylists.includes(p.id));
 
     return (
         <>
@@ -199,88 +260,68 @@ export default function GeoPlaylistMapManager({
                         )}
 
                         {/* Aktive Playlisten */}
-                        {activeGeoPlaylists.length > 0 && (
+                        {(activeOwnPlaylists.length > 0 || activeSharedPlaylists.length > 0) && (
                             <View style={styles.section}>
-                                <Text style={styles.sectionTitle}>🎵 Aktive Playlisten</Text>
+                                <Text style={styles.sectionTitle}>Aktive Geo-Playlisten</Text>
                                 <Text style={styles.sectionSubtitle}>
-                                    Du befindest dich im Radius dieser Playlists
+                                    Du befindest dich im Radius dieser Geo-Playlisten
                                 </Text>
 
-                                {geoPlaylists
-                                    .filter(p => activeGeoPlaylists.includes(p.id))
-                                    .map(geoPlaylist => (
-                                        <View key={geoPlaylist.id} style={styles.playlistCardWithActions}>
-                                            <View style={styles.cardContent}>
-                                                <Image
-                                                    source={{
-                                                        uri: geoPlaylist.spotifyPlaylistImage || 'https://via.placeholder.com/80x80/E5E7EB/9CA3AF?text=♪'
-                                                    }}
-                                                    style={styles.playlistImage}
-                                                />
-                                                <View style={styles.playlistInfo}>
-                                                    <Text style={styles.playlistName}>{geoPlaylist.name}</Text>
-                                                    <Text style={styles.playlistMeta}>
-                                                        📍 Aktiv • {geoPlaylist.radius}m Radius
-                                                    </Text>
-                                                    <Text style={styles.playlistSpotify}>
-                                                        {geoPlaylist.spotifyPlaylistName}
-                                                    </Text>
-                                                </View>
-                                            </View>
-                                            {renderPlaylistActions(geoPlaylist)}
-                                        </View>
-                                    ))
-                                }
+                                {/* Aktive eigene Playlisten */}
+                                {activeOwnPlaylists.map(geoPlaylist => renderPlaylistCard(geoPlaylist))}
+
+                                {/* Aktive geteilte Playlisten */}
+                                {activeSharedPlaylists.map(geoPlaylist => renderPlaylistCard(geoPlaylist))}
                             </View>
                         )}
 
-                        {/* Alle Playlisten */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Alle Geo-Playlisten</Text>
-                            <Text style={styles.sectionSubtitle}>
-                                Verwalte deine Geo-Playlisten
-                            </Text>
-
-                            {geoPlaylists.length === 0 ? (
-                                <View style={styles.emptyState}>
-                                    <Ionicons name="map-outline" size={64} color="#9CA3AF" />
-                                    <Text style={styles.emptyStateTitle}>Keine Geo-Playlisten</Text>
-                                    <Text style={styles.emptyStateText}>
-                                        Erstelle deine erste Geo-Playlist auf der Karte!
-                                    </Text>
+                        {/* Geteilte Playlisten Sektion */}
+                        {sharedPlaylists.length > 0 && (
+                            <View style={styles.section}>
+                                <View style={styles.sectionHeaderWithIcon}>
+                                    <Ionicons name="people" size={20} color="#8B5CF6" />
+                                    <Text style={styles.sectionTitle}>Mit mir geteilte Playlisten</Text>
                                 </View>
-                            ) : (
-                                geoPlaylists.map((geoPlaylist) => (
-                                    <View key={geoPlaylist.id} style={styles.playlistCardWithActions}>
-                                        <View style={styles.cardContent}>
-                                            <Image
-                                                source={{
-                                                    uri: geoPlaylist.spotifyPlaylistImage || 'https://via.placeholder.com/80x80/E5E7EB/9CA3AF?text=♪'
-                                                }}
-                                                style={styles.playlistImage}
-                                            />
-                                            <View style={styles.playlistInfo}>
-                                                <Text style={styles.playlistName}>{geoPlaylist.name}</Text>
-                                                <Text style={styles.playlistMeta}>
-                                                    📍 {geoPlaylist.isActive ? 'Aktiv' : 'Inaktiv'} • {geoPlaylist.radius}m Radius
-                                                </Text>
-                                                <Text style={styles.playlistSpotify}>
-                                                    {geoPlaylist.spotifyPlaylistName}
-                                                </Text>
-                                            </View>
-                                        </View>
-                                        {renderPlaylistActions(geoPlaylist)}
-                                    </View>
-                                ))
-                            )}
-                        </View>
+                                <Text style={styles.sectionSubtitle}>
+                                    Playlisten, die andere Nutzer mit dir geteilt haben
+                                </Text>
+
+                                {sharedPlaylists.map(geoPlaylist => renderPlaylistCard(geoPlaylist))}
+                            </View>
+                        )}
+
+                        {/* Eigene Playlisten */}
+                        {ownPlaylists.length > 0 && (
+                            <View style={styles.section}>
+                                <View style={styles.sectionHeaderWithIcon}>
+                                    <Ionicons name="person" size={20} color="#3B82F6" />
+                                    <Text style={styles.sectionTitle}>Meine Geo-Playlisten</Text>
+                                </View>
+                                <Text style={styles.sectionSubtitle}>
+                                    Deine eigenen Geo-Playlisten
+                                </Text>
+
+                                {ownPlaylists.map(geoPlaylist => renderPlaylistCard(geoPlaylist))}
+                            </View>
+                        )}
+
+                        {/* Empty State */}
+                        {geoPlaylists.length === 0 && (
+                            <View style={styles.emptyState}>
+                                <Ionicons name="map-outline" size={64} color="#9CA3AF" />
+                                <Text style={styles.emptyStateTitle}>Keine Geo-Playlisten</Text>
+                                <Text style={styles.emptyStateText}>
+                                    Erstelle deine erste Geo-Playlist auf der Karte oder akzeptiere eine Einladung!
+                                </Text>
+                            </View>
+                        )}
 
                         <View style={styles.bottomSpacing} />
                     </ScrollView>
                 </SafeAreaView>
             </Modal>
 
-            {/* Share Modal - bleibt unverändert */}
+            {/* Share Modal */}
             <Modal visible={showShareModal} animationType="slide" presentationStyle="pageSheet">
                 <SafeAreaView style={styles.modalContainer}>
                     <View style={styles.modalHeader}>
@@ -322,7 +363,6 @@ export default function GeoPlaylistMapManager({
     );
 }
 
-// Neue Styles hinzufügen
 const styles = StyleSheet.create({
     modalContainer: {
         flex: 1,
@@ -371,18 +411,23 @@ const styles = StyleSheet.create({
     section: {
         marginBottom: 32,
     },
+    sectionHeaderWithIcon: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 4,
+    },
     sectionTitle: {
         fontSize: 18,
         fontWeight: "600",
         color: "#1F2937",
-        marginBottom: 4,
     },
     sectionSubtitle: {
         fontSize: 14,
         color: "#6B7280",
         marginBottom: 16,
     },
-    playlistCardWithActions: {
+    card: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#FFFFFF',
@@ -397,35 +442,84 @@ const styles = StyleSheet.create({
         borderWidth: 2,
         borderColor: '#10B981',
     },
-    cardContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
+    sharedCard: {
+        borderColor: '#8B5CF6',
+        backgroundColor: '#FEFBFF',
     },
-    playlistImage: {
+    imageContainer: {
+        position: 'relative',
+        marginRight: 16,
+    },
+    image: {
         width: 80,
         height: 80,
         borderRadius: 8,
-        marginRight: 16,
+        backgroundColor: '#E5E7EB',
     },
-    playlistInfo: {
+    sharedBadge: {
+        position: 'absolute',
+        top: -4,
+        right: -4,
+        backgroundColor: '#8B5CF6',
+        borderRadius: 12,
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+        elevation: 2,
+        shadowColor: '#8B5CF6',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.3,
+        shadowRadius: 2,
+    },
+    info: {
         flex: 1,
         gap: 4,
     },
-    playlistName: {
+    nameRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+    },
+    name: {
         fontSize: 16,
         fontWeight: '600',
         color: '#1F2937',
+        flex: 1,
+        minWidth: 0,
     },
-    playlistMeta: {
+    sharedIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F3F4F6',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 10,
+        gap: 3,
+    },
+    sharedText: {
+        fontSize: 10,
+        color: '#8B5CF6',
+        fontWeight: '500',
+    },
+    meta: {
         fontSize: 14,
         color: '#10B981',
+        fontWeight: '500',
     },
-    playlistSpotify: {
+    spotifyName: {
         fontSize: 12,
         color: '#6B7280',
+        fontStyle: 'italic',
     },
-    allActions: {
+    sharedFromText: {
+        fontSize: 10,
+        color: '#8B5CF6',
+        fontStyle: 'italic',
+        marginTop: 2,
+    },
+    actions: {
         flexDirection: 'row',
         gap: 8,
         alignItems: 'center',
