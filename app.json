@@ -12,10 +12,13 @@
       "supportsTablet": true,
       "infoPlist": {
         "UIBackgroundModes": [
-          "location"
+          "location",
+          "background-fetch",
+          "background-processing"
         ],
-        "NSLocationWhenInUseUsageDescription": "Diese App benötigt deinen Standort, um Funktionen wie Geofencing zu ermöglichen.",
-        "NSLocationAlwaysUsageDescription": "Diese App benötigt deinen Standort im Hintergrund, um Geofences zu erkennen.",
+        "NSLocationWhenInUseUsageDescription": "Diese App benötigt deinen Standort, um Geo-Playlisten zu erstellen und zu verwalten.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Diese App benötigt Zugriff auf deinen Standort, um Geo-Playlisten automatisch zu aktivieren wenn du bestimmte Bereiche betrittst.",
+        "NSLocationAlwaysUsageDescription": "Diese App benötigt deinen Standort im Hintergrund, um dir Benachrichtigungen zu senden wenn Geo-Playlisten in deiner Nähe verfügbar sind.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.rckwld.ebeproject"
@@ -26,7 +29,15 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.rckwld.ebeproject"
+      "package": "com.rckwld.ebeproject",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "WAKE_LOCK",
+        "VIBRATE"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -44,7 +55,26 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-notifications"
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Diese App benötigt Zugriff auf deinen Standort, um Geo-Playlisten zu erstellen und automatisch zu aktivieren.",
+          "locationAlwaysPermission": "Diese App benötigt deinen Standort im Hintergrund, um dir Benachrichtigungen zu senden wenn Geo-Playlisten in deiner Nähe verfügbar sind.",
+          "locationWhenInUsePermission": "Diese App benötigt deinen Standort, um Geo-Playlisten zu erstellen und zu verwalten.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#3B82F6",
+          "defaultChannel": "geo-playlists",
+          "sounds": []
+        }
+      ],
+      "expo-task-manager"
     ],
     "experiments": {
       "typedRoutes": true
