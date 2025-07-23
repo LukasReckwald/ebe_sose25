@@ -1,13 +1,13 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
+import {View, StyleSheet, ActivityIndicator, Text, TouchableOpacity, Alert} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '@/firebaseConfig';
 import { router } from 'expo-router';
 import { getValidSpotifyTokens, SpotifyTokens } from '@/utils/spotifyToken';
 
-import PlaylistHeader from '@/components/PlaylistHeader';
-import TabNavigation from '@/components/TabNavigation';
+import PlaylistHeader from '@/components/playlist/PlaylistHeader';
+import TabNavigation from '@/components/playlist/TabNavigation';
 import OverviewTab from '@/components/playlist/OverviewTab';
 import SearchTab from '@/components/playlist/SearchTab';
 import CreateTab from '@/components/playlist/CreateTab';
@@ -189,7 +189,10 @@ export default function PlaylistScreen() {
                 track={quickAddTrack}
                 activeGeoPlaylists={activeGeoPlaylists}
                 playlists={playlists}
-                onClose={() => setShowQuickAddModal(false)}
+                onClose={() => {
+                    setShowQuickAddModal(false);
+                    setQuickAddTrack(null);
+                }}
                 onAddToGeoPlaylist={addTrackToGeoPlaylist}
                 onAddToPlaylist={handleAddToPlaylist}
             />
@@ -199,7 +202,13 @@ export default function PlaylistScreen() {
                 isPlaying={isPlaying}
                 hasActiveOptions={activeGeoPlaylists.length > 0 || selectedPlaylist}
                 onTogglePlayPause={togglePlayPause}
-                onAddCurrentTrack={addCurrentTrackToPlaylist}
+                onAddCurrentTrack={() => {
+                    if (currentTrack) {
+                        openQuickAddModal(currentTrack);
+                    } else {
+                        Alert.alert('Kein Track', 'Es wird gerade kein Song abgespielt.');
+                    }
+                }}
             />
         </SafeAreaView>
     );
