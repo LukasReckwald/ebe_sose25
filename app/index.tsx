@@ -1,16 +1,12 @@
-import { Text, View } from "react-native";
+import {View, Text, Platform, StyleSheet, SafeAreaView} from "react-native";
+import React, { useEffect, useState, useRef } from "react";
+import Login from "@/app/login";
 
 export default function Index() {
   return (
-      <View
-          style={{
-              flex: 1,
-              justifyContent: "center",
-              alignItems: "center",
-          }}
-      >
-        <Text>Edit app/index.tsx to edit this screen.</Text>
-
-      </View>
+      <Login/>
   );
 }
+
+const styles = StyleSheet.create({
+});
